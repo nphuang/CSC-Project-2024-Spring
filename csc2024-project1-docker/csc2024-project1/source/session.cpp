@@ -295,7 +295,6 @@ int Session::encapsulateESP(std::span<uint8_t> buffer, const std::string& payloa
     // TODO: Fill in config.aalg->hash()'s parameter
     auto result = config.aalg->hash(buffer.first(payloadLength));
     std::copy(result.begin(), result.end(), buffer.begin() + payloadLength);
-    if(config.aalg->verify(result)) std::cout << "\nOK!!!!\n";
     payloadLength += result.size();
   }
 
@@ -321,7 +320,7 @@ int Session::encapsulateTCP(std::span<uint8_t> buffer, const std::string& payloa
     payloadLength += payload.size();
   }
   // TODO: Update TCP sequence number
-//   state.tcpseq = htonl(ntohl(hdr.seq) + payloadLength);
+  state.tcpseq = hdr.seq;
   payloadLength += sizeof(tcphdr);
   iphdr* iph = reinterpret_cast<iphdr*>(buffer.data() - sizeof(iphdr));
   tcphdr* tcph = reinterpret_cast<tcphdr*>(buffer.data());
