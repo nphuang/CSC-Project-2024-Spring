@@ -15,6 +15,7 @@
 #include <linux/if_ether.h> // Include the header file that defines "ETH_P_ARP"
 #include <net/if_arp.h>       // for ARPHRD_ETHER and ARPOP_REQUEST
 #include <netinet/ether.h>
+#include <linux/if_packet.h> // Include the header file that defines "struct sockaddr_ll"
 
 using namespace std;
 
@@ -38,6 +39,30 @@ struct arp_packet {
 
 map<string, string> devices;
 
+int bind_socket(const char* interface) {
+    // create socket
+    int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
+    if (sockfd < 0) {
+        cerr << "Error creating socket." << endl;
+        return -1;
+    }
+
+    // bind socket to interface
+    struct sockaddr_ll socket_address;
+    memset(&socket_address, 0, sizeof(struct sockaddr_ll));
+    socket_address.sll_family = AF_PACKET;
+    socket_address.sll_protocol = htons(ETH_P_ARP);
+    cout<<"Interface: "<<interface<<endl;
+    cout<<"Interface index: "<<if_nametoindex(interface)<<endl;
+    socket_address.sll_ifindex = if_nametoindex(interface);
+    cout << "Interface index: " << socket_address.sll_ifindex << endl;
+    if (bind(sockfd, (struct sockaddr*)&socket_address, sizeof(struct sockaddr_ll)) < 0) {
+        cerr << "Error binding socket to interface." << endl;
+        return -1;
+    }
+
+    return sockfd;
+}
 
 string exec(const char* cmd) {
     array<char, 128> buffer;
@@ -60,64 +85,50 @@ void list_devices() {
     cout << "Interface: " << interface << endl;
     uint32_t gateway_ip_int = inet_addr(gateway_ip.c_str());
     // cout<<"Gateway IP int: "<<gateway_ip_int<<endl;
-    uint32_t local;
-    uint32_t mask;
-    struct ifreq ifr;
-    struct sockaddr_in* sin;
-    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    strcpy(ifr.ifr_name, interface.c_str());
-    ioctl(sockfd, SIOCGIFADDR, &ifr);
-    sin = (struct sockaddr_in*)&ifr.ifr_addr;
-    local = sin->sin_addr.s_addr;
-    ioctl(sockfd, SIOCGIFNETMASK, &ifr);
-    sin = (struct sockaddr_in*)&ifr.ifr_netmask;
-    mask = sin->sin_addr.s_addr;
-    close(sockfd);
-    cout<<"Local IP int: "<<local<<endl;
-    cout<<"Mask IP int: "<<mask<<endl;   
-    uint32_t network = local & mask;
-    uint32_t broadcast = network | ~mask;
-    cout<<"Network IP int: "<<network<<endl;
-    cout<<"Broadcast IP int: "<<broadcast<<endl;
-    
-
-
-    // create socket
-    int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
-    if (sockfd < 0) {
-        cerr << "Error creating socket." << endl;
+    // uint32_t local;
+    // int ifindex;
+        
+    if (bind_socket(interface.c_str()) < 0) {
+        cerr << "Error binding socket to interface." << endl;
         return;
     }
 
-    // construct ARP request packet
-    arp_packet packet;
-    memset(&packet, 0, sizeof(arp_packet));
+    // // create socket
+    // int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
+    // if (sockfd < 0) {
+    //     cerr << "Error creating socket." << endl;
+    //     return;
+    // }
 
-    // set Ethernet header
-    packet.eth.h_proto = htons(ETH_P_ARP);
+    // // construct ARP request packet
+    // arp_packet packet;
+    // memset(&packet, 0, sizeof(arp_packet));
 
-    // set ARP header
-    packet.arp.htype = htons(ARPHRD_ETHER);
-    packet.arp.ptype = htons(ETH_P_IP);
-    packet.arp.hlen = 6;
-    packet.arp.plen = 4;
-    packet.arp.opcode = htons(ARPOP_REQUEST);
+    // // set Ethernet header
+    // packet.eth.h_proto = htons(ETH_P_ARP);
 
-    // get source MAC address
-    struct ifreq ifr;
-    strcpy(ifr.ifr_name, interface.c_str());
-    ioctl(sockfd, SIOCGIFHWADDR, &ifr);
-    memcpy(packet.eth.h_source, ifr.ifr_hwaddr.sa_data, 6);
-    cout << "Attacker MAC Address: " << ether_ntoa((struct ether_addr*)packet.eth.h_source) << endl;
+    // // set ARP header
+    // packet.arp.htype = htons(ARPHRD_ETHER);
+    // packet.arp.ptype = htons(ETH_P_IP);
+    // packet.arp.hlen = 6;
+    // packet.arp.plen = 4;
+    // packet.arp.opcode = htons(ARPOP_REQUEST);
+
+    // // get source MAC address
+    // struct ifreq ifr;
+    // strcpy(ifr.ifr_name, interface.c_str());
+    // ioctl(sockfd, SIOCGIFHWADDR, &ifr);
+    // memcpy(packet.eth.h_source, ifr.ifr_hwaddr.sa_data, 6);
+    // cout << "Attacker MAC Address: " << ether_ntoa((struct ether_addr*)packet.eth.h_source) << endl;
     
-    // get source IP address
-    ioctl(sockfd, SIOCGIFADDR, &ifr);
-    struct sockaddr_in* sin = (struct sockaddr_in*)&ifr.ifr_addr;
-    memcpy(packet.arp.sender_ip, &sin->sin_addr, 4);
-    cout << "Attacker IP Address: " << inet_ntoa(sin->sin_addr) << endl;
+    // // get source IP address
+    // ioctl(sockfd, SIOCGIFADDR, &ifr);
+    // struct sockaddr_in* sin = (struct sockaddr_in*)&ifr.ifr_addr;
+    // memcpy(packet.arp.sender_ip, &sin->sin_addr, 4);
+    // cout << "Attacker IP Address: " << inet_ntoa(sin->sin_addr) << endl;
 
-    // set destination MAC address to broadcast
-    memset(packet.eth.h_dest, 0xff, 6);
+    // // set destination MAC address to broadcast
+    // memset(packet.eth.h_dest, 0xff, 6);
 
     // set target IP address
     // uint8_t target_ip[4] = {192, 168, 1, 1};
@@ -151,7 +162,7 @@ void list_devices() {
     // // display device information
     // cout << "IP Address: " << ip_str << ", MAC Address: " << mac_str << endl;
 
-    close(sockfd);
+    // close(sockfd);
 }
 
 int main() {
