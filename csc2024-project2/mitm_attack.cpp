@@ -3,91 +3,54 @@
 #include <map>
 #include <cstring>
 #include <cstdlib>
-#include <unistd.h>
 #include <sys/socket.h>
-#include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <net/if.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <sys/ioctl.h>
 
 using namespace std;
 
-map<string, string> possible_victims;
+struct arp_header {
+    uint16_t htype;
+    uint16_t ptype;
+    uint8_t hlen;
+    uint8_t plen;
+    uint16_t opcode;
+    uint8_t sender_mac[6];
+    uint8_t sender_ip[4];
+    uint8_t target_mac[6];
+    uint8_t target_ip[4];
+};
 
-void list_devices() {
-    int sockfd;
-    struct ifreq ifr;
-    struct sockaddr_in sin;
-    char mac[18];
+map<string, string> devices;
 
-    // Create socket
-    sockfd = socket(AF_INET, SOCK_RAW, htons(0x0806));
-    if(sockfd < 0) {
-        cerr << "Error: Unable to create socket" << endl;
-        exit(1);
+string exec(const char* cmd) {
+    array<char, 128> buffer;
+    string result;
+    unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) {
+        throw runtime_error("popen() failed!");
     }
-
-    // Get list of network interfaces
-    struct ifconf ifc;
-    char buffer[1024];
-    ifc.ifc_buf = buffer;
-    ifc.ifc_len = sizeof(buffer);
-    if(ioctl(sockfd, SIOCGIFCONF, &ifc) < 0) {
-        cerr << "Error: Unable to get network interfaces" << endl;
-        close(sockfd);
-        exit(1);
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
     }
+    return result;
+}
 
-    // Iterate over each network interface
-    struct ifreq* it = ifc.ifc_req;
-    const struct ifreq* const end = it + (ifc.ifc_len / sizeof(struct ifreq));
-    for (; it != end; ++it) {
-        strcpy(ifr.ifr_name, it->ifr_name);
-
-        // Get interface flags
-        if(ioctl(sockfd, SIOCGIFFLAGS, &ifr) < 0) {
-            cerr << "Error: Unable to get interface flags" << endl;
-            continue;
-        }
-
-        // Skip interfaces that are not up or loopback
-        if(!(ifr.ifr_flags & IFF_UP) || (ifr.ifr_flags & IFF_LOOPBACK)) {
-            continue;
-        }
-
-        // Get interface address
-        if(ioctl(sockfd, SIOCGIFADDR, &ifr) < 0) {
-            cerr << "Error: Unable to get interface address" << endl;
-            continue;
-        }
-
-        // Convert IP address to string format
-        sin = *(struct sockaddr_in*)&ifr.ifr_addr;
-        char* interface_ip = inet_ntoa(sin.sin_addr);
-
-        // Get interface CIDR
-        if(ioctl(sockfd, SIOCGIFNETMASK, &ifr) < 0) {
-            cerr << "Error: Unable to get interface netmask" << endl;
-            continue;
-        }
-
-        // Convert netmask to string format
-        sin = *(struct sockaddr_in*)&ifr.ifr_addr;
-        char* netmask = inet_ntoa(sin.sin_addr);
-
-        // Generate CIDR format
-        string cidr = string(interface_ip) + "/" + to_string(__builtin_popcount(*(uint32_t*)&sin.sin_addr.s_addr));
-
-        // ARP ping to discover hosts on the local ethernet network
-        // Implement this part according to your previous method
-
-        cout << "Interface: " << ifr.ifr_name << ", CIDR: " << cidr << endl;
-    }
-
-    close(sockfd);
+void list_devices(const char* interface, const char* AP_ip, const char* cidr) {
 }
 
 int main() {
-    list_devices();
+    // task 1: list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
+    // get the interface name and gateway IP address
+    string gateway = exec("ip route | grep default | awk '{print $3}'").c_str();
+    string interface = exec("ip route | grep default | awk '{print $5}'").c_str();
+    string cidr = exec("ip route | grep default | awk '{print $1}'").c_str();
+    cout << "Gateway IP: " << gateway << endl;
+    cout << "Interface: " << interface << endl;
+    cout << "CIDR: " << cidr << endl;
     return 0;
 }
