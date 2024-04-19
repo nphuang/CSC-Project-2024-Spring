@@ -320,7 +320,7 @@ int Session::encapsulateTCP(std::span<uint8_t> buffer, const std::string& payloa
     payloadLength += payload.size();
   }
   // TODO: Update TCP sequence number
-  state.tcpseq = hdr.seq;
+  state.tcpseq = hdr.seq+unsigned(1)
   payloadLength += sizeof(tcphdr);
   iphdr* iph = reinterpret_cast<iphdr*>(buffer.data() - sizeof(iphdr));
   tcphdr* tcph = reinterpret_cast<tcphdr*>(buffer.data());
