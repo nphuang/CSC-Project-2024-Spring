@@ -39,7 +39,7 @@ struct arp_packet {
 
 map<string, string> devices;
 
-int bind_socket(const char* interface) {
+int bind_socket(int index) {
     // create socket
     int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
     if (sockfd < 0) {
@@ -51,11 +51,9 @@ int bind_socket(const char* interface) {
     struct sockaddr_ll socket_address;
     memset(&socket_address, 0, sizeof(struct sockaddr_ll));
     socket_address.sll_family = AF_PACKET;
-    socket_address.sll_protocol = htons(ETH_P_ARP);
-    cout<<"Interface: "<<interface<<endl;
-    cout<<"Interface index: "<<if_nametoindex(interface)<<endl;
-    socket_address.sll_ifindex = if_nametoindex(interface);
-    cout << "Interface index: " << socket_address.sll_ifindex << endl;
+    // socket_address.sll_protocol = htons(ETH_P_ARP);
+    socket_address.sll_ifindex = index;
+    // cout << "Interface index: " << socket_address.sll_ifindex << endl;
     if (bind(sockfd, (struct sockaddr*)&socket_address, sizeof(struct sockaddr_ll)) < 0) {
         cerr << "Error binding socket to interface." << endl;
         return -1;
@@ -87,8 +85,12 @@ void list_devices() {
     // cout<<"Gateway IP int: "<<gateway_ip_int<<endl;
     // uint32_t local;
     // int ifindex;
-        
-    if (bind_socket(interface.c_str()) < 0) {
+    // input ip addr show interface to get the index of the interface
+
+    // grep the index of the interface
+    int index = exec(("ip addr show " + interface).c_str())[0] - '0';
+    cout<<"Index: "<< index <<endl;
+    if (bind_socket(index)) {
         cerr << "Error binding socket to interface." << endl;
         return;
     }
