@@ -59,8 +59,29 @@ void list_devices() {
     cout << "Gateway IP: " << gateway_ip << endl;
     cout << "Interface: " << interface << endl;
     uint32_t gateway_ip_int = inet_addr(gateway_ip.c_str());
-    cout<<"Gateway IP int: "<<gateway_ip_int<<endl;
+    // cout<<"Gateway IP int: "<<gateway_ip_int<<endl;
+    uint32_t local;
+    uint32_t mask;
+    struct ifreq ifr;
+    struct sockaddr_in* sin;
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    strcpy(ifr.ifr_name, interface.c_str());
+    ioctl(sockfd, SIOCGIFADDR, &ifr);
+    sin = (struct sockaddr_in*)&ifr.ifr_addr;
+    local = sin->sin_addr.s_addr;
+    ioctl(sockfd, SIOCGIFNETMASK, &ifr);
+    sin = (struct sockaddr_in*)&ifr.ifr_netmask;
+    mask = sin->sin_addr.s_addr;
+    close(sockfd);
+    cout<<"Local IP int: "<<local<<endl;
+    cout<<"Mask IP int: "<<mask<<endl;   
+    uint32_t network = local & mask;
+    uint32_t broadcast = network | ~mask;
+    cout<<"Network IP int: "<<network<<endl;
+    cout<<"Broadcast IP int: "<<broadcast<<endl;
     
+
+
     // create socket
     int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
     if (sockfd < 0) {
