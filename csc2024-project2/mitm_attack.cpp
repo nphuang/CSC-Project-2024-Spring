@@ -38,7 +38,6 @@ struct arp_packet {
 
 
 map<string, string> devices;
-
 int bind_socket(int index) {
     // create socket
     int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
@@ -74,14 +73,27 @@ string exec(const char* cmd) {
     }
     return result;
 }
+void get_devices(int index, uint32_t gateway_ip, uint32_t source_ip, map<string, string>& devices) {
+    // create socket
+    int arp_sockfd;
+    
+    if (bind_socket(index)) {
+        cerr << "Error binding socket to interface." << endl;
+        return;
+    }
+
+}
 void list_devices() {
     // list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
     // get the interface name and gateway IP address
     string gateway_ip = exec("ip route | grep default | awk '{print $3}'").c_str();
+    string source_ip = exec("hostname -I").c_str();
     string interface = exec("ip route | grep default | awk '{print $5}'").c_str();
     cout << "Gateway IP: " << gateway_ip << endl;
     cout << "Interface: " << interface << endl;
     uint32_t gateway_ip_int = inet_addr(gateway_ip.c_str());
+    uint32_t source_ip_int = inet_addr(source_ip.c_str());
+    cout<<"Source IP int: "<<source_ip_int<<endl;
     // cout<<"Gateway IP int: "<<gateway_ip_int<<endl;
     // uint32_t local;
     // int ifindex;
@@ -90,10 +102,8 @@ void list_devices() {
     // grep the index of the interface
     int index = exec(("ip addr show " + interface).c_str())[0] - '0';
     cout<<"Index: "<< index <<endl;
-    if (bind_socket(index)) {
-        cerr << "Error binding socket to interface." << endl;
-        return;
-    }
+    // task1 arp
+    get_devices(index, gateway_ip_int ,source_ip_int, devices);
 
     // // create socket
     // int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
