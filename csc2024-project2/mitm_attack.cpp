@@ -38,10 +38,11 @@ struct arp_packet {
 
 
 map<string, string> devices;
-int bind_socket(int index) {
+int bind_socket(int index, int* sockfd) {
     // create socket
-    int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
-    if (sockfd < 0) {
+    *sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
+    cout << "Socket: " << *sockfd << endl;
+    if (*sockfd < 0) {
         cerr << "Error creating socket." << endl;
         return -1;
     }
@@ -76,8 +77,7 @@ string exec(const char* cmd) {
 void get_devices(int index, uint32_t gateway_ip, uint32_t source_ip, map<string, string>& devices) {
     // create socket
     int arp_sockfd;
-    
-    if (bind_socket(index)) {
+    if (bind_socket(index, &arp_sockfd) < 0) {
         cerr << "Error binding socket to interface." << endl;
         return;
     }
@@ -93,16 +93,9 @@ void list_devices() {
     cout << "Interface: " << interface << endl;
     uint32_t gateway_ip_int = inet_addr(gateway_ip.c_str());
     uint32_t source_ip_int = inet_addr(source_ip.c_str());
-    cout<<"Source IP int: "<<source_ip_int<<endl;
-    // cout<<"Gateway IP int: "<<gateway_ip_int<<endl;
-    // uint32_t local;
-    // int ifindex;
-    // input ip addr show interface to get the index of the interface
-
     // grep the index of the interface
     int index = exec(("ip addr show " + interface).c_str())[0] - '0';
     cout<<"Index: "<< index <<endl;
-    // task1 arp
     get_devices(index, gateway_ip_int ,source_ip_int, devices);
 
     // // create socket
