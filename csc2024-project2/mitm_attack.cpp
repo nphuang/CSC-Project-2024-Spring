@@ -19,6 +19,8 @@
 #include <linux/if_packet.h> // Include the header file that defines "struct sockaddr_ll"
 #include <net/ethernet.h>
 #include <thread>
+#include <atomic>
+
 using namespace std;
 
 
@@ -67,7 +69,6 @@ struct ether_arp *fill_arp_packet(const unsigned char *src_mac_addr, const char 
     return arp_packet;
 }
 
-map<string, string> devices;
 string exec(const char* cmd) {
     array<char, 128> buffer;
     string result;
@@ -79,6 +80,34 @@ string exec(const char* cmd) {
         result += buffer.data();
     }
     return result;
+}
+
+map<string, string> devices;
+atomic<bool> stop_receiving(false);
+void receive_arp_reply(int sock_raw_fd) {
+    unsigned char buffer[ETHER_ARP_PACKET_LEN];
+    ssize_t length;
+    while (!stop_receiving) {
+        length = recvfrom(sock_raw_fd, buffer, ETHER_ARP_PACKET_LEN, 0, NULL, NULL);
+        if (length == -1) {
+            cerr << "Error receiving packet." << endl;
+        } else {
+            // 解析 ARP 回覆
+            struct ether_arp *arp_resp = (struct ether_arp *)(buffer + ETHER_HEADER_LEN);
+            if (ntohs(arp_resp->arp_op) == ARPOP_REPLY) {                
+                // Extract sender IP address
+                string sender_ip_str = inet_ntoa(*(struct in_addr*)arp_resp->arp_spa);
+
+                // Extract sender MAC address
+                char sender_mac_str[18];
+                sprintf(sender_mac_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+                    arp_resp->arp_sha[0], arp_resp->arp_sha[1], arp_resp->arp_sha[2],
+                    arp_resp->arp_sha[3], arp_resp->arp_sha[4], arp_resp->arp_sha[5]);
+                // add to devices
+                devices[sender_ip_str] = sender_mac_str;
+            }
+        }
+    }
 }
 void arp_request(const char *if_name, const char *base_ip)
 {
@@ -119,13 +148,9 @@ void arp_request(const char *if_name, const char *base_ip)
         cerr << "Error getting MAC address." << endl;
     }
     memcpy(src_mac_addr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
-    // cout << "local MAC: ";
-    // for (int i = 0; i < 6; i++) {
-    //     cout << hex << setw(2) << setfill('0') << (int)src_mac_addr[i];
-    //     if (i < 5) 
-    //         cout << ":";
-    // }
-    // cout << endl;
+    // cout << "local MAC: " << ether_ntoa((struct ether_addr *)src_mac_addr) << endl;
+    thread receive_thread(receive_arp_reply, sock_raw_fd);
+
 
     for (int i = 1; i < 255; i++) {
         string dst_ip = string(base_ip) + "." + to_string(i);
@@ -144,39 +169,11 @@ void arp_request(const char *if_name, const char *base_ip)
         ret_len = sendto(sock_raw_fd, buf, ETHER_ARP_PACKET_LEN, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll));
         if ( ret_len < 0) {
             cerr << "Error sending packet." << endl;
-        }
-                
-
-        // receive
-        unsigned char buffer[ETHER_ARP_PACKET_LEN];
-        ssize_t length = recvfrom(sock_raw_fd, buffer, ETHER_ARP_PACKET_LEN, 0, NULL, NULL);
-        if (length == -1) {
-            cerr << "Error receiving packet." << endl;
-        } else {
-            // 解析 ARP 回覆
-            struct ether_arp *arp_resp = (struct ether_arp *)(buffer + ETHER_HEADER_LEN);
-            if (ntohs(arp_resp->arp_op) == ARPOP_REPLY) {
-                struct in_addr sender_ip;
-                memcpy(&sender_ip, arp_resp->arp_spa, IP_ADDR_LEN);
-                char sender_ip_str[INET_ADDRSTRLEN];
-                inet_ntop(AF_INET, &sender_ip, sender_ip_str, INET_ADDRSTRLEN);
-
-                struct ether_addr sender_mac;
-                memcpy(&sender_mac, arp_resp->arp_sha, ETH_ALEN);
-                char sender_mac_str[18];
-                ether_ntoa_r(&sender_mac, sender_mac_str);
-
-                // add to devices
-                devices[sender_ip_str] = sender_mac_str;
-
-                // cout << "ARP Reply Received: ";
-                // cout << "Sender IP: " << sender_ip_str << ", Sender MAC: " << sender_mac_str << endl;
-            }
-        }
-
+        }    
     }
-    // read the response
-    //
+
+    stop_receiving = true;
+    receive_thread.join();
 
 
     close(sock_raw_fd);
@@ -184,7 +181,7 @@ void arp_request(const char *if_name, const char *base_ip)
 }
 
 
-void get_devices(string interface, string gateway_ip, string source_ip, map<string, string>& devices) {
+void get_devices(string interface, string gateway_ip) {
     // send ARP request to all devices in the network  
     // get the MAC address of the source IP address
     // struct ifreq ifr;
@@ -192,6 +189,9 @@ void get_devices(string interface, string gateway_ip, string source_ip, map<stri
     string base_ip = gateway_ip.substr(0, gateway_ip.find_last_of("."));
     arp_request(interface.c_str(), base_ip.c_str());
     for (auto it = devices.begin(); it != devices.end(); ++it) {
+        if (it->first == gateway_ip) {
+            continue;
+        }
         cout << it->first << "\t" << it->second << endl;
     }
 
@@ -221,7 +221,7 @@ void list_devices() {
     cout << "IP\t\tMAC\n";
     cout << "---------------------------------\n";
 
-    get_devices(interface, gateway_ip ,source_ip, devices);
+    get_devices(interface, gateway_ip);
 
 }
 
