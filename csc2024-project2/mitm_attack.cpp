@@ -146,6 +146,7 @@ void arp_request(const char *if_name, const char *base_ip)
             cerr << "Error sending packet." << endl;
         }
                 
+
         // receive
         unsigned char buffer[ETHER_ARP_PACKET_LEN];
         ssize_t length = recvfrom(sock_raw_fd, buffer, ETHER_ARP_PACKET_LEN, 0, NULL, NULL);
@@ -165,7 +166,7 @@ void arp_request(const char *if_name, const char *base_ip)
                 char sender_mac_str[18];
                 ether_ntoa_r(&sender_mac, sender_mac_str);
 
-                // 將 IP 和 MAC 加入 devices 地圖
+                // add to devices
                 devices[sender_ip_str] = sender_mac_str;
 
                 cout << "ARP Reply Received: ";
