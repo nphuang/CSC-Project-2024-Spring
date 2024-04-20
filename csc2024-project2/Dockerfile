@@ -20,7 +20,8 @@ RUN apt-get install -y \
     gcc \
     build-essential \
     libssl-dev \
-    libnetfilter-queue-dev
+    libnetfilter-queue-dev \
+    tcpdump
 
 # Set up any environment variables
 ENV PATH="/usr/local/bin:${PATH}"
