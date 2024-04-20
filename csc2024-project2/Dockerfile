@@ -23,14 +23,17 @@ RUN apt-get install -y \
     libnetfilter-queue-dev \
     tcpdump
 
+RUN apt-get clean
+
+
 # Set up any environment variables
 ENV PATH="/usr/local/bin:${PATH}"
 
 # Copy files or directories into the container
-COPY . /root
+COPY . /home
 
 # Set the working directory
-WORKDIR /root
+WORKDIR /home
 
 # Specify the command to run when the container starts
 CMD ["/bin/bash"]
