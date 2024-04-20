@@ -3,6 +3,7 @@
 #include <map>
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -16,6 +17,7 @@
 #include <net/if_arp.h>       // for ARPHRD_ETHER and ARPOP_REQUEST
 #include <netinet/ether.h>
 #include <linux/if_packet.h> // Include the header file that defines "struct sockaddr_ll"
+#include <net/ethernet.h>
 
 using namespace std;
 
@@ -100,15 +102,6 @@ string exec(const char* cmd) {
 }
 void get_devices(string interface, uint32_t gateway_ip, uint32_t source_ip, map<string, string>& devices) {
     // grep the index of the interface
-    string temp = exec(("ip addr show " + interface).c_str());
-    int i;
-    for (i = 0; i < temp.size(); i++) {
-        if (temp[i] == ':') {
-            break;
-        }
-    }
-    int index = stoi(temp.substr(0, i));
-    cout << "Interface index: " << index << endl;
     int arp_sockfd;
     bind_socket(index, &arp_sockfd);
     // send ARP request to all devices in the network  
@@ -126,18 +119,12 @@ void get_devices(string interface, uint32_t gateway_ip, uint32_t source_ip, map<
     memcpy(source_mac, ifr.ifr_hwaddr.sa_data, 6);
     cout << "Source MAC: ";
     for (int i = 0; i < 6; i++) {
-        cout << hex << setw(2) << setfill('0') << (int)source_mac[i];
+        cout << source_mac[i];
         if (i < 5) {
             cout << ":";
         }
     }
 
-    // for (int i = 0; i < 6; i++) {
-    //     cout << hex << setw(2) << setfill('0') << (int)source_mac[i];
-    //     if (i < 5) {
-    //         cout << ":";
-    //     }
-    // }
     // cout << endl;
     // send ARP request to all devices in the network
     // for (auto& device : devices) {
@@ -150,11 +137,14 @@ void get_devices(string interface, uint32_t gateway_ip, uint32_t source_ip, map<
 void list_devices() {
     // list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
     // get the interface name and gateway IP address
-    string gateway_ip = exec("ip route | grep default | awk '{print $3}'").c_str();
-    string source_ip = exec("hostname -I").c_str();
-    string interface = exec("ip route | grep default | awk '{print $5}'").c_str();
-    cout << "Gateway IP: " << gateway_ip;
-    cout << "Interface: " << interface;
+    string gateway_ip = exec("ip route | grep default | awk '{print $3}'");
+    gateway_ip.erase(gateway_ip.end() - 1);
+    string source_ip = exec("hostname -I");
+    source_ip.erase(source_ip.end() - 1);
+    string interface = exec("ip route | grep default | awk '{print $5}'");
+    interface.erase(interface.end() - 1);
+    cout << "Gateway IP: " << gateway_ip << endl;
+    cout << "Interface: " << interface << endl;
     uint32_t gateway_ip_int = inet_addr(gateway_ip.c_str());
     uint32_t source_ip_int = inet_addr(source_ip.c_str());
     get_devices(interface, gateway_ip_int ,source_ip_int, devices);
