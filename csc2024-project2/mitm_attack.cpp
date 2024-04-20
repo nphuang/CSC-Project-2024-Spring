@@ -33,61 +33,41 @@ struct arp_header {
     uint8_t target_mac[6];
     uint8_t target_ip[4];
 };
-struct arp_packet {
-    struct ethhdr eth;
-    struct arp_header arp;
-};
+// struct arp_packet {
+//     struct ethhdr eth;
+//     struct arp_header arp;
+// };
+#define ETHER_HEADER_LEN sizeof(struct ether_header)
+#define ETHER_ARP_LEN sizeof(struct ether_arp)
+#define ETHER_ARP_PACKET_LEN ETHER_HEADER_LEN + ETHER_ARP_LEN
+#define IP_ADDR_LEN 4
+#define BROADCAST_ADDR {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 
+struct ether_arp *fill_arp_packet(const unsigned char *src_mac_addr, const char *src_ip, const char *dst_ip)
+{
+    struct ether_arp *arp_packet;
+    struct in_addr src_in_addr, dst_in_addr;
+    unsigned char dst_mac_addr[ETH_ALEN] = BROADCAST_ADDR;
+    // ip address translation
+    inet_pton(AF_INET, src_ip, &src_in_addr);
+    inet_pton(AF_INET, dst_ip, &dst_in_addr);
+
+    // fill the arp packet
+    arp_packet = (struct ether_arp *)malloc(ETHER_ARP_LEN);
+    arp_packet->arp_hrd = htons(ARPHRD_ETHER);
+    arp_packet->arp_pro = htons(ETHERTYPE_IP);
+    arp_packet->arp_hln = ETH_ALEN;
+    arp_packet->arp_pln = IP_ADDR_LEN;
+    arp_packet->arp_op = htons(ARPOP_REQUEST);
+    memcpy(arp_packet->arp_sha, src_mac_addr, ETH_ALEN);
+    memcpy(arp_packet->arp_tha, dst_mac_addr, ETH_ALEN);
+    memcpy(arp_packet->arp_spa, &src_in_addr, IP_ADDR_LEN);
+    memcpy(arp_packet->arp_tpa, &dst_in_addr, IP_ADDR_LEN);
+
+    return arp_packet;
+}
 
 map<string, string> devices;
-int send_arp (int sockfd, uint32_t source_ip, uint32_t target_ip, uint8_t* source_mac) {
-    struct arp_packet packet;
-    memset(&packet, 0, sizeof(packet));
-    // fill the Ethernet header
-    memset(&packet.eth.h_dest, 0xff, 6); // destination MAC address
-    memcpy(&packet.eth.h_source, source_mac, 6); // source MAC address
-    packet.eth.h_proto = htons(ETH_P_ARP); // protocol type
-    // fill the ARP header
-    packet.arp.htype = htons(ARPHRD_ETHER); // hardware type
-    packet.arp.ptype = htons(ETH_P_IP); // protocol type
-    packet.arp.hlen = 6; // hardware address length
-    packet.arp.plen = 4; // protocol address length
-    packet.arp.opcode = htons(ARPOP_REQUEST); // ARP operation
-
-    memcpy(&packet.arp.sender_mac, source_mac, 6); // sender MAC address
-    memcpy(&packet.arp.sender_ip, &source_ip, 4); // sender IP address
-    // memcpy(&packet.arp.target_mac, target_mac, 6); // target MAC address
-    memcpy(&packet.arp.target_ip, &target_ip, 4); // target IP address
-    // send the ARP packet
-    if (send(sockfd, &packet, sizeof(packet), 0) < 0) {
-        cerr << "Error sending ARP packet." << endl;
-        return -1;
-    }
-    return 0;
-}
-void bind_socket(int index, int* sockfd) {
-    // create socket
-    *sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
-    cout << "Socket: " << *sockfd << endl;
-    if (*sockfd < 0) {
-        cerr << "Error creating socket." << endl;
-        // return -1; // Remove this line
-    }
-
-    // bind socket to interface
-    struct sockaddr_ll socket_address;
-    memset(&socket_address, 0, sizeof(struct sockaddr_ll));
-    socket_address.sll_family = AF_PACKET;
-    // socket_address.sll_protocol = htons(ETH_P_ARP);
-    socket_address.sll_ifindex = index;
-    // cout << "Interface index: " << socket_address.sll_ifindex << endl;
-    if (bind(*sockfd, (struct sockaddr*)&socket_address, sizeof(struct sockaddr_ll)) < 0) {
-        cerr << "Error binding socket to interface." << endl;
-        // return -1; // Remove this line
-    }
-    // return 0; // Remove this line
-}
-
 string exec(const char* cmd) {
     array<char, 128> buffer;
     string result;
@@ -100,37 +80,93 @@ string exec(const char* cmd) {
     }
     return result;
 }
-void get_devices(string interface, uint32_t gateway_ip, uint32_t source_ip, map<string, string>& devices) {
-    // grep the index of the interface
-    int arp_sockfd;
-    bind_socket(index, &arp_sockfd);
-    // send ARP request to all devices in the network  
-    // get the MAC address of the source IP address
+void arp_request(const char *if_name, const char *dst_ip)
+{
+    struct sockaddr_ll saddr_ll;
+    struct ether_header *eth_header;
+    struct ether_arp *arp_packet;
     struct ifreq ifr;
-    strcpy(ifr.ifr_name, interface.c_str());
-    if (ioctl(arp_sockfd, SIOCGIFINDEX, &ifr) < 0) {
-        cerr << "Error getting index." << endl;
-    }
-    cout << "Interface index: " << ifr.ifr_ifindex << endl;
-    if (ioctl(arp_sockfd, SIOCGIFHWADDR, &ifr) < 0) {
-        cerr << "Error getting MAC address." << endl;
-    }
-    unsigned char source_mac[6];
-    memcpy(source_mac, ifr.ifr_hwaddr.sa_data, 6);
-    cout << "Source MAC: ";
-    for (int i = 0; i < 6; i++) {
-        cout << source_mac[i];
-        if (i < 5) {
-            cout << ":";
-        }
+    char buf[ETHER_ARP_PACKET_LEN];
+    unsigned char src_mac_addr[ETH_ALEN];
+    unsigned char dst_mac_addr[ETH_ALEN] = BROADCAST_ADDR;
+
+    int sock_raw_fd, ret_len, i;
+
+    if ((sock_raw_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ARP))) == -1)
+    {
+        cerr << "Error creating socket." << endl;
     }
 
-    // cout << endl;
+    bzero(&saddr_ll, sizeof(struct sockaddr_ll));
+    bzero(&ifr, sizeof(struct ifreq));
+    memcpy(ifr.ifr_name, if_name, strlen(if_name));
+    cout << "Interface name: " << if_name << endl;
+    // ifindex
+    if (ioctl(sock_raw_fd, SIOCGIFINDEX, &ifr) < 0) {
+        cerr << "Error getting index." << endl;
+    }
+    saddr_ll.sll_ifindex = ifr.ifr_ifindex;
+    saddr_ll.sll_family = PF_PACKET;
+    cout << "Interface index: " << saddr_ll.sll_ifindex << endl;
+    // local ip
+    if (ioctl(sock_raw_fd, SIOCGIFADDR, &ifr) < 0) 
+        cerr << "Error getting src ip." << endl;
+    char *src_ip = inet_ntoa(((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr);
+    cout << "local IP: " << src_ip << endl;
+
+    // local mac
+    if (ioctl(sock_raw_fd, SIOCGIFHWADDR, &ifr) < 0) {
+        cerr << "Error getting MAC address." << endl;
+    }
+    memcpy(src_mac_addr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+    cout << "local MAC: ";
+    for (int i = 0; i < 6; i++) {
+        cout << hex << setw(2) << setfill('0') << (int)src_mac_addr[i];
+        if (i < 5) 
+            cout << ":";
+    }
+    cout << endl;
+
+
+    bzero(buf, ETHER_ARP_PACKET_LEN);
+    // ethheader
+    eth_header = (struct ether_header *)buf;
+    memcpy(eth_header->ether_shost, src_mac_addr, ETH_ALEN);
+    memcpy(eth_header->ether_dhost, dst_mac_addr, ETH_ALEN);
+    eth_header->ether_type = htons(ETHERTYPE_ARP);
+    // arp packet
+    arp_packet = fill_arp_packet(src_mac_addr, src_ip, dst_ip);
+    memcpy(buf + ETHER_HEADER_LEN, arp_packet, ETHER_ARP_LEN);
+
+    // sendto
+    ret_len = sendto(sock_raw_fd, buf, ETHER_ARP_PACKET_LEN, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll));
+    if ( ret_len > 0)
+        printf("sendto() ok!!!\n");
+
+    close(sock_raw_fd);
+}
+
+
+void get_devices(string interface, string gateway_ip, string source_ip, map<string, string>& devices) {
+    // send ARP request to all devices in the network  
+    // get the MAC address of the source IP address
+
     // send ARP request to all devices in the network
-    // for (auto& device : devices) {
-    //     uint32_t target_ip = inet_addr(device.first.c_str());
-    //     send_arp(arp_sockfd, source_ip, target_ip, source_mac);
-    // }
+    for(int i = 1; i < 255; i++){
+        //gateway ip /24
+        string ip = gateway_ip.substr(0, gateway_ip.find_last_of(".")) + "." + to_string(i);
+        cout << "IP: " << ip << endl;
+        arp_request(interface.c_str(), ip.c_str());
+    }
+
+
+    
+    
+    // bind the socket to the interface
+    // int new_sockfd;
+    // bind_socket(ifr.ifr_ifindex, &new_sockfd);
+
+    // send to broadcast
 
 
 }
@@ -145,9 +181,9 @@ void list_devices() {
     interface.erase(interface.end() - 1);
     cout << "Gateway IP: " << gateway_ip << endl;
     cout << "Interface: " << interface << endl;
-    uint32_t gateway_ip_int = inet_addr(gateway_ip.c_str());
-    uint32_t source_ip_int = inet_addr(source_ip.c_str());
-    get_devices(interface, gateway_ip_int ,source_ip_int, devices);
+    // uint32_t gateway_ip_int = inet_addr(gateway_ip.c_str());
+    // uint32_t source_ip_int = inet_addr(source_ip.c_str());
+    get_devices(interface, gateway_ip ,source_ip, devices);
 
 }
 
