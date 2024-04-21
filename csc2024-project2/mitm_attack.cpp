@@ -358,31 +358,32 @@ void analyze_packet(){
         std::cerr << "Listen failed...\n";
         exit(0);
     }
-
     socklen_t len = sizeof(cli);
 
-    // Accept a connection
-    int connfd = accept(sockfd, (struct sockaddr*)&cli, &len);
-    if (connfd < 0) {
-        std::cerr << "Server accept failed...\n";
-        exit(0);
-    }
+    while (true) {
+        // Accept a connection
+        int connfd = accept(sockfd, (struct sockaddr*)&cli, &len);
+        if (connfd < 0) {
+            std::cerr << "Server accept failed...\n";
+            exit(0);
+        }
 
-    char buff[4096];
-    bzero(buff, 4096);
+        char buff[4096];
+        bzero(buff, 4096);
+        // Read the packet
+        read(connfd, buff, sizeof(buff));
+        // Analyze the packet
+        std::string packet(buff);
+        if (packet.find("txtUsername") != std::string::npos) {
+            std::cout << "Found packet with 'txtusername'\n";
+        }
 
-    // Read the packet
-    read(connfd, buff, sizeof(buff));
-
-    // Analyze the packet
-    std::string packet(buff);
-    if (packet.find("txtusername") != std::string::npos) {
-        std::cout << "Found packet with 'txtusername'\n";
+        // Close the connection
+        close(connfd);
     }
 
     // Close the socket
     close(sockfd);
-    close(connfd);
     cout<<"analyze packet done"<<endl;
 
 }
@@ -411,7 +412,7 @@ void arp_spoofing()
     thread analyze_thread(analyze_packet);
 
     
-    
+
     arp_reply_thread.join();
     analyze_thread.join();
 
