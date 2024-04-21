@@ -51,5 +51,12 @@
         "variant": "cpp",
         "vector": "cpp",
         "algorithm": "cpp"
-    }
+    },
+    "makefile.launchConfigurations": [
+        {
+            "cwd": "/Users/huangpengxuan/Documents/CSC-Project/csc2024-project2",
+            "binaryPath": "/Users/huangpengxuan/Documents/CSC-Project/csc2024-project2/mitm_attack",
+            "binaryArgs": []
+        }
+    ]
 }
