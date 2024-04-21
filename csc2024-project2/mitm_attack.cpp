@@ -351,6 +351,7 @@ static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, s
             if (ntohs(tcp_header->dest) == 80)
             {
                 // HTTP packet
+                cout<< "HTTP packet\n";
                 char *http_content = (char *)(packet + ip_header->ihl * 4 + tcp_header->doff * 4);
                 string http_content_str(http_content);
                 // find the packet with "txtUsername"
@@ -358,7 +359,9 @@ static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, s
                 {
                     cout << "HTTP POST packet with username: " << http_content_str << endl;
                 }
+
             }
+
         }
     }
     return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
