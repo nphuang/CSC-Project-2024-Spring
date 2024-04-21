@@ -21,7 +21,8 @@ RUN apt-get install -y \
     build-essential \
     libssl-dev \
     libnetfilter-queue-dev \
-    tcpdump
+    tcpdump \
+    iptables 
 
 RUN apt-get clean
 

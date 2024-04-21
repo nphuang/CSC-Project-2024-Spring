@@ -20,6 +20,8 @@
 #include <net/ethernet.h>
 #include <thread>
 #include <atomic>
+#include <linux/netfilter.h>
+#include <libnetfilter_queue/libnetfilter_queue.h>
 
 using namespace std;
 
@@ -331,6 +333,11 @@ void arp_spoofing()
 
 int main()
 {
+    system("sysctl -w net.ipv4.ip_forward=1 > /dev/null");
+    system("iptables -F");
+    system("iptables -F -t nat");
+    
+
     // task 1 : list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
     list_devices();
 
@@ -339,8 +346,6 @@ int main()
     Sending spoofed ARP packets to all neighbors (possible victims)
     to trick AP we are the victim and trick the victim we are AP
     */
-    if(system("sysctl -w net.ipv4.ip_forward=1"))
-        cerr << "Error enabling IP forwarding." << endl;
     arp_spoofing();
 
     return 0;
