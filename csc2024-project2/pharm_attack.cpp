@@ -40,17 +40,7 @@ using namespace std;
     }
 
 
-struct dnshdr{
-    unsigned short id;
-    unsigned short flags;
-    unsigned short qdcount;
-    unsigned short ancount;
-    unsigned short nscount;
-    unsigned short arcount;
-    unsigned short qtype;
-    unsigned short qclass;
-};
-}
+
 string gateway_ip;
 string source_ip;
 string interface;
@@ -372,18 +362,22 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
         // if receive dns request to www.nycu.edu.tw, then send spoofed DNS reply with IP: 140.113.24.241
         struct iphdr *ip_header = (struct iphdr *)packet;
         struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
+        cout << "UDP packet\n";
+        cout << "Source IP: " << inet_ntoa(*(struct in_addr *)&ip_header->saddr) << endl;
+        cout << "Destination IP: " << inet_ntoa(*(struct in_addr *)&ip_header->daddr) << endl;
+        cout << "Source Port: " << ntohs(udp_header->uh_sport) << endl;
+        cout << "Destination Port: " << ntohs(udp_header->uh_dport) << endl;
         // struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
         // check if the packet is DNS request
         if (ip_header->protocol == IPPROTO_UDP)
         {
             cout << "UDP packet\n";            
-            if (ntohs(udp_header->dest) == 53){
+            if (ntohs(udp_header->uh_dport) == 53){
                 cout << "DNS packet\n";
                 // check if the packet is DNS request
-                struct dnshdr *dns_header = (struct dnshdr *)(packet + ip_header->ihl * 4 + sizeof(struct udphdr));
                 // struct dns_header *dns_header = (struct dns_header *)(packet + ip_header->ihl * 4 + sizeof(struct udphdr));
 
-                if (ntohs(dns_header->qtype) == 1)
+                if ()
                 {
                     cout << "DNS request\n";
                     // check if the domain name is www.nycu.edu.tw
@@ -393,7 +387,7 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
                         cout << "DNS request to www.nycu.edu.tw\n";
                         // send spoofed DNS reply with IP:
                     }
-
+                }
             }
 
         }
