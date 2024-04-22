@@ -504,7 +504,8 @@ int main()
     system("iptables -F");
     system("iptables -F -t nat");
 
-    // system("iptables -A FORWARD -p udp --sport 53 -j NFQUEUE --queue-num 0");
+    system("iptables -A FORWARD -p udp --sport 53 -j NFQUEUE --queue-num 0");
+    system("iptables -A FORWARD -p udp --sport 53 -j NFQUEUE --queue-num 0");
     // char cmd[100];
     // sprintf(cmd, "iptables -t nat -A POSTROUTING -o %s -j MASQUERADE", interface.c_str());
     // system(cmd);
