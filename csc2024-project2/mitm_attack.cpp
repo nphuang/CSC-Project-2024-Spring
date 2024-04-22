@@ -390,13 +390,6 @@ void analyze_packet(){
     int fd;
     int rv;
     char buf[4096] __attribute__((aligned));
-    unsigned char *data;
-    struct nfq_data *tb;
-    struct nfqnl_msg_packet_hdr *ph;
-    struct iphdr *ip_header;
-    struct tcphdr *tcp_header;
-    struct ether_header *eth_header;
-    int id;
     h = nfq_open();
     if (!h)
     {

