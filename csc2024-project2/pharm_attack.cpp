@@ -385,7 +385,28 @@ void send_spoofed_dns_reply(char *packet, int len)
     dns_header->adcount = htons(0);
     dns_header->aucount = htons(0);
 
-    // change the DNS query to DNS reply
+    // derive question section qname qtype qclass
+    // move the pointer to the answer section
+    char *dns_query = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
+    // move the pointer to the answer section
+    char *dns_answer = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
+    // derive the question section
+    while (*dns_query != 0)
+    {
+        dns_query++;
+    }
+    dns_query += 5;
+    // derive the answer section
+    while (*dns_answer != 0)
+    {
+        dns_answer++;
+    }
+    dns_answer += 5;
+    // derive the question section
+    memcpy(dns_answer, dns_query, strlen(dns_query) + 1);
+    // derive the answer section
+
+
 
 
 }
@@ -418,6 +439,26 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
                 // //parse the dns query
 
                 // char *dns_query = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
+                // parse question section: qname qtype qclass
+                char* dns_query = (char*)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
+                char* qname = dns_query;
+                while (*qname != 0) {
+                    qname++;
+                }
+                qname += 5;
+                uint16_t qtype = ntohs(*(uint16_t*)(qname));
+                qname += 2;
+                uint16_t qclass = ntohs(*(uint16_t*)(qname));
+
+                // Print the parsed question section
+                cout << "Question Section:" << endl;
+                cout << "QName: " << qname << endl;
+                cout << "QType: " << qtype << endl;
+                cout << "QClass: " << qclass << endl;
+                
+
+
+
 
                 // use stringstream to derive the dns query
                 stringstream ss;
