@@ -375,36 +375,35 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
         struct iphdr *ip_header = (struct iphdr *)packet;        
         if (ip_header->protocol == IPPROTO_UDP)
         {
-            cout << "IP protocol: UDP" << endl;
             //parse the ip header
-            cout << ip_header->saddr << endl;
-            cout << ip_header->daddr << endl;
-            cout << ip_header->ihl << endl;
-            cout << ip_header->version << endl;
             struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
             //parse the udp header
-            cout << "Source port: " << ntohs(udp_header->source) << endl;
-            cout << "Destination port: " << ntohs(udp_header->dest) << endl;
-            cout << "UDP length: " << ntohs(udp_header->len) << endl;
-            cout << "UDP checksum: " << udp_header->check << endl;
 
             if (ntohs(udp_header->dest) == 53)
             {
                 //parse the dns header
-                struct dnshdr *dns_header = (struct dnshdr *)(packet + ip_header->ihl * 4 + sizeof(udphdr));
-                //parse the dns query
-                char *dns_query = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
+                // struct dnshdr *dns_header = (struct dnshdr *)(packet + ip_header->ihl * 4 + sizeof(udphdr));
+                // //parse the dns query
+
+                // char *dns_query = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
+
+                // use stringstream to derive the dns query
+                stringstream ss;
+                for (int i = 0; i < ret; ++i){
+                    ss << packet[i];
+                }
+                string dns_query = ss.str();
                 cout << "DNS query: " << dns_query << endl;
 
-                // if the dns query is www.nycu.edu.tw
-                if (strcmp(dns_query, "www.nycu.edu.tw") == 0)
-                {
-                    cout << "DNS query to www.nycu.edu.tw" << endl;
-                    // send the spoofed DNS reply
-                    // change the destination IP address to 140.113.24.241
-                    // ...
-                    return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-                }
+
+                // if ()
+                // {
+                //     cout << "DNS query to www.nycu.edu.tw" << endl;
+                //     // send the spoofed DNS reply
+                //     // change the destination IP address to 140.113.24.241
+                //     // ...
+                //     return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+                // }
             }
         }
 
@@ -505,7 +504,7 @@ int main()
     system("iptables -F -t nat");
 
     system("iptables -A FORWARD -p udp --sport 53 -j NFQUEUE --queue-num 0");
-    system("iptables -A FORWARD -p udp --sport 53 -j NFQUEUE --queue-num 0");
+    system("iptables -A FORWARD -p udp --dport 53 -j NFQUEUE --queue-num 0");
     // char cmd[100];
     // sprintf(cmd, "iptables -t nat -A POSTROUTING -o %s -j MASQUERADE", interface.c_str());
     // system(cmd);
