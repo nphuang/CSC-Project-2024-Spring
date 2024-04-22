@@ -358,39 +358,28 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
     int ret = nfq_get_payload(nfa, reinterpret_cast<unsigned char **>(&packet));
     if (ret > 0)
     {
-        // dns packet use udp protocol and port 53
-        // if receive dns request to www.nycu.edu.tw, then send spoofed DNS reply with IP: 140.113.24.241
-        struct iphdr *ip_header = (struct iphdr *)packet;
-        struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
-        cout << "UDP packet\n";
-        cout << "Source IP: " << inet_ntoa(*(struct in_addr *)&ip_header->saddr) << endl;
-        cout << "Destination IP: " << inet_ntoa(*(struct in_addr *)&ip_header->daddr) << endl;
-        cout << "Source Port: " << ntohs(udp_header->uh_sport) << endl;
-        cout << "Destination Port: " << ntohs(udp_header->uh_dport) << endl;
-        // struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
-        // check if the packet is DNS request
+        // dns packet use udp protocol and destionation port 53
+        // if detect dns query to www.nycu.edu.tw, then send spoofed DNS reply with IP: 140.113.24.241
+        struct iphdr *ip_header = (struct iphdr *)packet;        
         if (ip_header->protocol == IPPROTO_UDP)
         {
-            cout << "UDP packet\n";            
-            if (ntohs(udp_header->uh_dport) == 53){
-                cout << "DNS packet\n";
-                // check if the packet is DNS request
-                // struct dns_header *dns_header = (struct dns_header *)(packet + ip_header->ihl * 4 + sizeof(struct udphdr));
+            cout << "IP protocol: UDP" << endl;
+            //parse the ip header
+            struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
+            //parse the udp header
 
-                if ()
-                {
-                    cout << "DNS request\n";
-                    // check if the domain name is www.nycu.edu.tw
-                    char *domain_name = (char *)(packet + ip_header->ihl * 4 + sizeof(struct udphdr) + sizeof(struct dnshdr));
-                    if (strcmp(domain_name, "www.nycu.edu.tw") == 0)
-                    {
-                        cout << "DNS request to www.nycu.edu.tw\n";
-                        // send spoofed DNS reply with IP:
-                    }
-                }
+            cout << "Source port: " << ntohs(udp_header->source) << endl;
+            cout << "Destination port: " << ntohs(udp_header->dest) << endl;
+            if (ntohs(udp_header->dest) == 53)
+            {
+                //parse the dns header
+                struct dnshdr *dns_header = (struct dnshdr *)(packet + ip_header->ihl * 4 + sizeof(udphdr));
+                //parse the dns query
+                char *dns_query = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
+                cout << "DNS query: " << dns_query << endl;
             }
-
         }
+
     }
     return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 }
