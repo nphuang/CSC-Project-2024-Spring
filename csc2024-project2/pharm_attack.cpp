@@ -369,12 +369,16 @@ void send_spoofed_dns_reply(char *packet)
     struct iphdr *ip_header = (struct iphdr *)packet;
     // exchange the source and destination IP address
     in_addr temp;
+    ip_header->frag_off = 0;
     temp.s_addr = ip_header->saddr;
     ip_header->saddr = ip_header->daddr;
     ip_header->daddr = temp.s_addr;
     // cout to check the source and destination IP address
-    // cout << "Source IP: " << inet_ntoa(*(in_addr *)&ip_header->saddr) << endl;
-    // cout << "Destination IP: " << inet_ntoa(*(in_addr *)&ip_header->daddr) << endl;
+    cout << "Source IP: " << inet_ntoa(*(in_addr *)&ip_header->saddr) << endl;
+    cout << "Destination IP: " << inet_ntoa(*(in_addr *)&ip_header->daddr) << endl;
+    cout << "Protocol: " << ip_header->protocol << endl;
+    cout << "IP Header Length: " << ip_header->ihl * 4 << endl;
+
 
     // change the source port and destination port
     struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
