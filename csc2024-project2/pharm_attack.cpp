@@ -447,21 +447,17 @@ void send_spoofed_dns_reply(char *packet)
 
     for (int i = 0; i < tempLen/2 ; i ++)
     {
-        uint16_t word = ntohs(udp_checksum[i]);
-        sum += word;
+        sum += ntohs(udp_checksum[i]);
     }
     if (tempLen % 2)
     {
-        uint16_t word = ntohs(udp_checksum[tempLen/2]);
-        sum += word;
+        sum += ntohs(udp_checksum[tempLen/2]);
     }
     while (sum >> 16)
     {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
-    udp_header->check = ~htons(sum);
-    
-
+    udp_header->check = htons(~sum);
     // calculate the ip checksum
     ip_header->check = 0;
     unsigned short *ip_checksum = (unsigned short *)ip_header;
