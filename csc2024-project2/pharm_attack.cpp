@@ -363,6 +363,45 @@ void keep_sending_arp_reply(unsigned char *source_mac_char, unsigned char *gatew
     }
 }
 
+uint16_t udp_checksum(struct in_addr source_ip, struct in_addr dest_ip, struct udphdr *udp_header, uint16_t udp_len) {
+    uint32_t sum = 0;
+    uint16_t *ptr;
+
+    // Calculate the sum of the pseudo-header
+    // Source IP
+    ptr = (uint16_t *)&source_ip;
+    sum += *ptr++;
+    sum += *ptr;
+    // Destination IP
+    ptr = (uint16_t *)&dest_ip;
+    sum += *ptr++;
+    sum += *ptr;
+    // Protocol and UDP length
+    sum += htons(IPPROTO_UDP);
+    sum += htons(udp_len);
+
+    // Calculate the sum of the UDP header and data
+    ptr = (uint16_t *)udp_header;
+    while (udp_len > 1) {
+        sum += *ptr++;
+        udp_len -= 2;
+    }
+
+    // If there's a byte left over, pad it to 16 bits and add it to the sum
+    if (udp_len > 0) {
+        sum += htons((uint16_t)(*(uint8_t *)ptr) << 8);
+    }
+
+    // Add the carries
+    while (sum >> 16) {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+
+    // Return the one's complement of the sum
+    return (uint16_t)~sum;
+}
+
+
 void send_spoofed_dns_reply(char *packet)
 {
     // change the destination IP address to 140.113.24.241
@@ -433,29 +472,13 @@ void send_spoofed_dns_reply(char *packet)
 
     // calculate udp checksum
     // packet - ip_header to get the udp datagram
-    udp_header->check = 0;
-    uint32_t sum = 0;
+    udp_header->check = udp_checksum(ip_header->saddr, ip_header->daddr, udp_header, ntohs(udp_header->len));
     // calculate the pseudo header
-    sum += (ip_header->saddr >> 16) + (ip_header->saddr & 0xFFFF);
-    sum += (ip_header->daddr >> 16) + (ip_header->daddr & 0xFFFF);
-    sum += htons(IPPROTO_UDP);
-    sum += udp_header->len;
-    // calculate the udp datagram
-    unsigned short *udp_checksum = (unsigned short *)(packet + ip_header->ihl * 4);
-    for (int i = 0; i < total_len - ip_header->ihl * 4; i += 2)
-    {
-        uint16_t word = ntohs(udp_checksum[i]);
-        sum += word;
-    }
-    if (total_len % 2)
-    {
-        sum += ntohs((uint16_t)(*(packet + total_len - 1) << 8));
-    }
-    while (sum >> 16)
-    {
-        sum = (sum & 0xFFFF) + (sum >> 16);
-    }
-    udp_header->check = htons(~sum);
+    
+
+
+
+
 
 
     // calculate the ip checksum
