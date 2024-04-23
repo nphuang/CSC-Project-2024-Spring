@@ -441,15 +441,19 @@ void send_spoofed_dns_reply(char *packet)
     sum += IPPROTO_UDP;    
     sum += (total_len - ip_header->ihl * 4);
     // calculate the udp datagram
-    unsigned short *udp_checksum = (unsigned short *)(packet + ip_header->ihl * 4);
-    for (int i = 0; i < total_len - ip_header->ihl * 4; i += 2)
+
+    unsigned short *udp_checksum = (unsigned short *)(udp_header);
+    int tempLen = total_len - ip_header->ihl * 4;
+
+    for (int i = 0; i < tempLen/2 ; i ++)
     {
         uint16_t word = ntohs(udp_checksum[i]);
         sum += word;
     }
-    if (total_len % 2)
+    if (tempLen % 2)
     {
-        sum += ntohs((uint16_t)(*(packet + total_len - 1) << 8));
+        uint16_t word = ntohs(udp_checksum[tempLen/2]);
+        sum += word;
     }
     while (sum >> 16)
     {
