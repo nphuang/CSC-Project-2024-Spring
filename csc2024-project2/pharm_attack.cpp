@@ -435,27 +435,28 @@ void send_spoofed_dns_reply(char *packet)
     // packet - ip_header to get the udp datagram
     udp_header->check = 0;
     uint32_t sum = 0;
-    // calculate the pseudo header
+
+    // Calculate the pseudo header
     sum += ntohs(ip_header->saddr >> 16) + ntohs(ip_header->saddr & 0xFFFF);
     sum += ntohs(ip_header->daddr >> 16) + ntohs(ip_header->daddr & 0xFFFF);
-    sum += 0x0011;
-    // cout IPPROTO_UDP
-    cout <<htons(IPPROTO_UDP)   << endl;
-    
-    sum += (total_len - ip_header->ihl * 4);
-    // calculate the udp datagram
-    auto buf = reinterpret_cast<const uint16_t*>(udp_header);
-    int len_buf = (total_len - ip_header->ihl * 4)%2 ? (total_len - ip_header->ihl * 4)/2+1 : (total_len - ip_header->ihl * 4)/2;
+    sum += htons(IPPROTO_UDP);
+
+    sum += htons(total_len - ip_header->ihl * 4);
+
+    // Calculate the UDP datagram
+    const uint16_t* buf = reinterpret_cast<const uint16_t*>(udp_header);
+    int len_buf = (total_len - ip_header->ihl * 4) % 2 ? (total_len - ip_header->ihl * 4) / 2 + 1 : (total_len - ip_header->ihl * 4) / 2;
     for(int i = 0; i < len_buf; i++){
         sum += ntohs(buf[i]);
     }    
 
-    while (sum >> 16)
-    {
+    // Add the carries
+    while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
-    udp_header->check = ~htons(sum);
-    
+
+    // Return the one's complement of the sum
+    udp_header->check = htons(~sum);    
 
     // calculate the ip checksum
     ip_header->check = 0;
