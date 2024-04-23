@@ -433,8 +433,6 @@ void send_spoofed_dns_reply(char *packet)
 
     // calculate udp checksum
     // packet - ip_header to get the udp datagram
-    unsigned char *udp_datagram = (unsigned char *)udp_header;
-    unsigned short udpLen = ntohs(udp_header->len); // Use ntohs to convert from network byte order to host byte order
     udp_header->check = 0;
     uint32_t sum = 0;
     sum += (ip_header->saddr >> 16) & 0xFFFF;
@@ -444,25 +442,17 @@ void send_spoofed_dns_reply(char *packet)
     sum += htons(IPPROTO_UDP);
     sum += udp_header->len;
 
-    // Add the UDP datagram to the sum
-    while (udpLen > 1) {
-        sum += *((unsigned short *) udp_datagram);
-        udp_datagram += 2;
-        udpLen -= 2;
+    unsigned short *udp_data = (unsigned short *)udp_header;
+    for (int i = 0; i < ntohs(udp_header->len) / 2; i++) {
+        if (&udp_data[i] != &udp_header->check) // 排除校验和字段本身
+            sum += ntohs(udp_data[i]);
     }
 
-    // If the length of the UDP datagram is odd, add the last byte to the sum
-    if (udpLen == 1) {
-        sum += *udp_datagram << 8; // Left shift by 8 bits because it's the high byte
-    }
-
-    // Add the carry
     while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
 
-    // Store the one's complement of sum in the checksum field of the UDP header
-    udp_header->check = ~htons(sum);
+    udp_header->check = htons(~sum);
 
     // calculate the ip checksum
     ip_header->check = 0;
@@ -470,14 +460,14 @@ void send_spoofed_dns_reply(char *packet)
     sum = 0;
     for (int i = 0; i < ip_header->ihl * 4 / 2; i++)
     {
-        sum += ip_checksum[i];
+        uint16_t word = ntohs(ip_checksum[i]); 
+        sum += word;
     } 
     while (sum >> 16)
     {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
-    ip_header->check = ~htons(sum);
-
+    ip_header->check = htons(~sum);
 
     // send the spoofed DNS reply
     // attach eth header before packet
