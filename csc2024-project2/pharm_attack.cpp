@@ -668,6 +668,10 @@ int main()
     system("iptables -A FORWARD -p udp --sport 53 -j NFQUEUE --queue-num 0");
     system("iptables -A FORWARD -p udp --dport 53 -j NFQUEUE --queue-num 0");
 
+    // MASQURADE interface
+
+    system(("iptables -t nat -A POSTROUTING -o " + interface + " -j MASQUERADE").c_str());
+
     // task 1 : list all devices' IP/MAC addresses in the Wi-Fi network(except the attacker and gateway)
     list_devices();
 
