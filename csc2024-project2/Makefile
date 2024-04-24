@@ -1,16 +1,7 @@
-CFLAGS = -Wall
-LIBS = -lpthread -lnetfilter_queue
-TARGETS = mitm_attack pharm_attack
-
-.PHONY: all clean
-
-all: $(TARGETS)
+all: mitm_attack pharm_attack
 
 mitm_attack: mitm_attack.cpp
-    g++ $(CFLAGS) -o $@ $< $(LIBS)
+	g++ -o mitm_attack mitm_attack.cpp -lpthread -lnetfilter_queue
 
 pharm_attack: pharm_attack.cpp
-    g++ $(CFLAGS) -o $@ $< $(LIBS)
-
-clean:
-    rm -f $(TARGETS)
+	g++ -o pharm_attack pharm_attack.cpp -lpthread -lnetfilter_queue
