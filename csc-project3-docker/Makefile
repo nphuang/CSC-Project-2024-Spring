@@ -1,6 +1,9 @@
+all: crack_attack attacker_server
 
-mv crack_attack.py crack_attack
-chmod +x crack_attack
+crack_attack: crack_attack.py
+	mv crack_attack.py crack_attack
+	chmod +x crack_attack
 
-mv attack_server.py attack_server
-chmod +x attack_server
+attacker_server: attacker_server.py
+	mv attacker_server.py attacker_server
+	chmod +x attacker_server

