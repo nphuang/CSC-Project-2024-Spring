@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # ./crack_attack <Victim IP> <Attacker IP> <Attacker port> 
-# ./crack_attack 172.18.0.3 172.18.0.2 22
+# ./crack_attack 172.18.0.3 172.18.0.2 8888
 import paramiko
 import sys
 import itertools
