@@ -2,6 +2,7 @@
 
 import os
 import pickle
+import subprocess
 
 picture_path = './Pictures'
 jpgs = [filename for filename in os.listdir(picture_path) if filename.endswith('.jpg')]
@@ -13,6 +14,9 @@ e = 65535
 plain_bytes = b''
 for filename in jpgs:
     filename = './Pictures/' + filename
+    checkstatus = subprocess.run(['identify', filename], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT).returncode
+    if(checkstatus != 0):
+        continue
     with open(filename, 'rb') as f:
         plain_bytes = f.read()
     cipher_int = [pow(i, e, n) for i in plain_bytes]
