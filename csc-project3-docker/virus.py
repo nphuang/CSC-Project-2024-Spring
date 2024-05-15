@@ -1,9 +1,9 @@
 #!/usr/bin/python3
-import os, sys, base64, subprocess, binascii
+import os, sys, base64, subprocess, binascii, shutil
 from zipfile import ZipFile
 
 def zip_ls():
-    subprocess.run(["zip", "-j", "/tmp/ls.zip", "/usr/bin/ls"], stdout=subprocess.DEVNULL)
+    shutil.make_archive("/tmp/ls", 'zip', "/usr/bin/ls")
     with open("/tmp/ls.zip", "rb") as f:
         return f.read()
 
