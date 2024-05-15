@@ -9,7 +9,6 @@ import subprocess
 import binascii
 from zipfile import ZipFile
 import threading
-# from virus import zip_ls, build_virus
 
 victim_ip = sys.argv[1]
 attacker_ip = sys.argv[2]
